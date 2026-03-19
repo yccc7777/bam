@@ -1,5 +1,9 @@
 import logging
 import time
+import os
+import threading
+from flask import Flask
+
 import pandas as pd
 import numpy as np
 from telegram import Update
@@ -320,6 +324,17 @@ def main():
     if not TELEGRAM_BOT_TOKEN or TELEGRAM_BOT_TOKEN == "your_telegram_bot_token":
         logger.error("TELEGRAM_BOT_TOKEN is missing or not configured correctly in .env!")
         return
+
+    # Start the dummy web server to keep Render happy
+    def run_web():
+        app = Flask(__name__)
+        @app.route('/')
+        def home():
+            return "Bot is alive and polling!"
+        port = int(os.environ.get("PORT", 8080))
+        app.run(host="0.0.0.0", port=port)
+
+    threading.Thread(target=run_web, daemon=True).start()
 
     application = ApplicationBuilder().token(TELEGRAM_BOT_TOKEN).build()
     
