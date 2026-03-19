@@ -1,0 +1,18 @@
+# Data Pipeline & Processing
+pandas>=2.0.0
+numpy>=1.24.0
+yfinance>=0.2.36
+requests>=2.31.0
+beautifulsoup4>=4.12.3
+
+# Machine Learning & AI Models
+scikit-learn>=1.3.0
+xgboost>=2.0.3
+google-generativeai>=0.4.0
+
+# Telegram Bot Interface
+python-telegram-bot>=21.0.1
+
+# Environment Variables & Utilities
+python-dotenv>=1.0.1
+tqdm>=4.66.1
