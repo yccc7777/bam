@@ -11,7 +11,7 @@ xgboost>=2.0.3
 google-generativeai>=0.4.0
 
 # Telegram Bot Interface
-python-telegram-bot[webhooks]>=21.0.1
+python-telegram-bot[webhooks,job-queue]>=21.0.1
 
 # Environment Variables & Utilities
 python-dotenv>=1.0.1
