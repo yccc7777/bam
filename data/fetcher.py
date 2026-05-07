@@ -72,3 +72,30 @@ class DataFetcher:
                 results[d.strftime("%Y-%m-%d")] = df
             time.sleep(3) # Politeness delay to avoid IP ban
         return results
+
+    def fetch_recent_news(self, ticker: str, limit: int = 3) -> str:
+        """
+        Fetch the latest news for a given ticker using yfinance.
+        Returns a formatted string containing titles and summaries.
+        """
+        logger.info(f"Fetching recent news for {ticker}...")
+        try:
+            # yfinance requires .TW for Taiwan stocks, assume ticker has it or we might need to append
+            # Wait, in this project ticker usually is passed as e.g. "2330.TW"
+            yf_ticker = yf.Ticker(ticker)
+            news_items = yf_ticker.news
+            
+            if not news_items:
+                return "無最新新聞。"
+                
+            formatted_news = []
+            for item in news_items[:limit]:
+                content = item.get('content', {})
+                title = content.get('title', 'No Title')
+                summary = content.get('summary', 'No Summary')
+                formatted_news.append(f"標題：{title}\n摘要：{summary}")
+                
+            return "\n\n".join(formatted_news)
+        except Exception as e:
+            logger.error(f"Error fetching news for {ticker}: {e}")
+            return "無法取得最新新聞。"
