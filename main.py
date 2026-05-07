@@ -638,10 +638,10 @@ def main():
     application.add_handler(CommandHandler('test_pre', test_pre))
     application.add_handler(CommandHandler('test_post', test_post))
     
-    # Add daily jobs
-    tz = datetime.timezone(datetime.timedelta(hours=8)) # Asia/Taipei timezone
-    application.job_queue.run_daily(send_premarket_report, time=datetime.time(hour=8, minute=30, tzinfo=tz))
-    application.job_queue.run_daily(send_postmarket_review, time=datetime.time(hour=14, minute=30, tzinfo=tz))
+    # 排程任務已移交給 GitHub Actions 執行
+    # tz = datetime.timezone(datetime.timedelta(hours=8)) # Asia/Taipei timezone
+    # application.job_queue.run_daily(send_premarket_report, time=datetime.time(hour=8, minute=30, tzinfo=tz))
+    # application.job_queue.run_daily(send_postmarket_review, time=datetime.time(hour=14, minute=30, tzinfo=tz))
     
     # 註冊全域錯誤處理器
     application.add_error_handler(error_handler)

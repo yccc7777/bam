@@ -16,6 +16,7 @@ python-telegram-bot[webhooks,job-queue]>=21.0.1
 # Environment Variables & Utilities
 python-dotenv>=1.0.1
 tqdm>=4.66.1
+supabase>=2.3.0
 
 # Multi-Agent Debate
 langchain>=0.1.13

@@ -1,112 +1,100 @@
-import sqlite3
 import os
 import logging
-from datetime import datetime
+from supabase import create_client, Client
 
 logger = logging.getLogger(__name__)
 
 class PortfolioDB:
     def __init__(self, db_path=None):
-        if db_path is None:
-            # 預設儲存在 data 目錄下
-            db_path = os.path.join(os.path.dirname(__file__), 'portfolio.db')
-        self.db_path = db_path
-        self._init_db()
-
-    def _get_connection(self):
-        return sqlite3.connect(self.db_path)
-
-    def _init_db(self):
-        with self._get_connection() as conn:
-            cursor = conn.cursor()
-            # 建立 User 表格：記錄每個使用者的虛擬本金
-            cursor.execute('''
-                CREATE TABLE IF NOT EXISTS Users (
-                    user_id INTEGER PRIMARY KEY,
-                    balance REAL DEFAULT 1000000.0
-                )
-            ''')
-            # 建立 Holdings 表格：記錄庫存
-            cursor.execute('''
-                CREATE TABLE IF NOT EXISTS Holdings (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    user_id INTEGER,
-                    ticker TEXT,
-                    quantity INTEGER,
-                    avg_price REAL,
-                    UNIQUE(user_id, ticker),
-                    FOREIGN KEY (user_id) REFERENCES Users(user_id)
-                )
-            ''')
-            # 建立 Trades 表格：記錄交易歷史
-            cursor.execute('''
-                CREATE TABLE IF NOT EXISTS Trades (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    user_id INTEGER,
-                    ticker TEXT,
-                    action TEXT,
-                    price REAL,
-                    quantity INTEGER,
-                    timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
-                    FOREIGN KEY (user_id) REFERENCES Users(user_id)
-                )
-            ''')
-            conn.commit()
+        self.supabase: Client = None
+        try:
+            supabase_url = os.environ.get("SUPABASE_URL")
+            supabase_key = os.environ.get("SUPABASE_KEY")
+            if supabase_url and supabase_key:
+                self.supabase = create_client(supabase_url, supabase_key)
+            else:
+                logger.warning("SUPABASE_URL or SUPABASE_KEY is missing. PortfolioDB will fail.")
+        except Exception as e:
+            logger.error(f"Failed to initialize Supabase client for PortfolioDB: {e}")
 
     def get_or_create_user(self, user_id: int) -> float:
         """取得使用者的現金餘額，如果不存在則建立一個預設 100 萬餘額的帳戶"""
-        with self._get_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute('SELECT balance FROM Users WHERE user_id = ?', (user_id,))
-            row = cursor.fetchone()
-            if row:
-                return row[0]
+        if not self.supabase: return 1000000.0
+        try:
+            response = self.supabase.table('users').select('balance').eq('user_id', user_id).execute()
+            if response.data:
+                return float(response.data[0]['balance'])
             else:
-                cursor.execute('INSERT INTO Users (user_id, balance) VALUES (?, ?)', (user_id, 1000000.0))
-                conn.commit()
+                self.supabase.table('users').insert({'user_id': user_id, 'balance': 1000000.0}).execute()
                 return 1000000.0
+        except Exception as e:
+            logger.error(f"Error in get_or_create_user: {e}")
+            return 1000000.0
 
     def update_balance(self, user_id: int, new_balance: float):
-        with self._get_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute('UPDATE Users SET balance = ? WHERE user_id = ?', (new_balance, user_id))
-            conn.commit()
+        if not self.supabase: return
+        try:
+            self.supabase.table('users').update({'balance': float(new_balance)}).eq('user_id', user_id).execute()
+        except Exception as e:
+            logger.error(f"Error updating balance: {e}")
 
     def record_trade(self, user_id: int, ticker: str, action: str, price: float, quantity: int):
-        with self._get_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute(
-                'INSERT INTO Trades (user_id, ticker, action, price, quantity) VALUES (?, ?, ?, ?, ?)',
-                (user_id, ticker, action, price, quantity)
-            )
-            conn.commit()
+        if not self.supabase: return
+        try:
+            data = {
+                'user_id': user_id,
+                'ticker': ticker,
+                'action': action,
+                'price': float(price),
+                'quantity': quantity
+            }
+            self.supabase.table('trades').insert(data).execute()
+        except Exception as e:
+            logger.error(f"Error recording trade: {e}")
 
     def get_holding(self, user_id: int, ticker: str):
         """回傳 (quantity, avg_price)，如果沒有持股回傳 (0, 0.0)"""
-        with self._get_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute('SELECT quantity, avg_price FROM Holdings WHERE user_id = ? AND ticker = ?', (user_id, ticker))
-            row = cursor.fetchone()
-            return row if row else (0, 0.0)
+        if not self.supabase: return (0, 0.0)
+        try:
+            response = self.supabase.table('holdings').select('quantity, avg_price').eq('user_id', user_id).eq('ticker', ticker).execute()
+            if response.data:
+                return (int(response.data[0]['quantity']), float(response.data[0]['avg_price']))
+            return (0, 0.0)
+        except Exception as e:
+            logger.error(f"Error getting holding: {e}")
+            return (0, 0.0)
 
     def update_holding(self, user_id: int, ticker: str, quantity: int, avg_price: float):
-        with self._get_connection() as conn:
-            cursor = conn.cursor()
+        if not self.supabase: return
+        try:
             if quantity == 0:
-                cursor.execute('DELETE FROM Holdings WHERE user_id = ? AND ticker = ?', (user_id, ticker))
+                self.supabase.table('holdings').delete().eq('user_id', user_id).eq('ticker', ticker).execute()
             else:
-                cursor.execute('''
-                    INSERT INTO Holdings (user_id, ticker, quantity, avg_price) 
-                    VALUES (?, ?, ?, ?)
-                    ON CONFLICT(user_id, ticker) DO UPDATE SET 
-                        quantity = excluded.quantity,
-                        avg_price = excluded.avg_price
-                ''', (user_id, ticker, quantity, avg_price))
-            conn.commit()
+                # Upsert relies on a unique constraint on (user_id, ticker)
+                data = {
+                    'user_id': user_id,
+                    'ticker': ticker,
+                    'quantity': quantity,
+                    'avg_price': float(avg_price)
+                }
+                # Check if exists to do update or insert (if ON CONFLICT is not fully supported by REST upsert without specifying column)
+                existing = self.supabase.table('holdings').select('id').eq('user_id', user_id).eq('ticker', ticker).execute()
+                if existing.data:
+                    self.supabase.table('holdings').update({
+                        'quantity': quantity,
+                        'avg_price': float(avg_price)
+                    }).eq('id', existing.data[0]['id']).execute()
+                else:
+                    self.supabase.table('holdings').insert(data).execute()
+        except Exception as e:
+            logger.error(f"Error updating holding: {e}")
 
     def get_all_holdings(self, user_id: int):
         """取得某位使用者的所有持股"""
-        with self._get_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute('SELECT ticker, quantity, avg_price FROM Holdings WHERE user_id = ?', (user_id,))
-            return cursor.fetchall()
+        if not self.supabase: return []
+        try:
+            response = self.supabase.table('holdings').select('ticker, quantity, avg_price').eq('user_id', user_id).execute()
+            return [(row['ticker'], int(row['quantity']), float(row['avg_price'])) for row in response.data]
+        except Exception as e:
+            logger.error(f"Error getting all holdings: {e}")
+            return []
