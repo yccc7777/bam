@@ -17,3 +17,4 @@ data/*.json
 *.svg
 *.dot
 
+test_venv/
