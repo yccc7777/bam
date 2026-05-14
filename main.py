@@ -506,10 +506,10 @@ async def _run_premarket_report(context: ContextTypes.DEFAULT_TYPE):
             f"🎯 **標的**：{ticker}\n"
             f"💰 **早盤參考價**：${current_price:.2f}\n"
             f"📰 **即時頭條**：_{news_display}_\n\n"
-            f"🤖 **首席經理人盤前決策**：\n"
-            f"_{debate_result['pm_view']}_\n"
+            f"🎯 **AI 最終行動建議**：\n"
+            f"**{debate_result['final_action']}**\n"
             f"━━━━━━━━━━━━━━━━━━━\n"
-            f"💡 系統將於下午為您覆核此決策的準確度。"
+            f"💡 系統將於下午為您檢討此決策的準確度。"
         )
         
         subs = StorageHelper.get_subscribers()
@@ -578,11 +578,11 @@ async def _run_postmarket_review(context: ContextTypes.DEFAULT_TYPE):
             f"━━━━━━━━━━━━━━━━━━━\n"
             f"🎯 **標的**：{ticker}\n"
             f"💰 **今日收盤價**：${actual_close:.2f} (早盤參考：${state['morning_price']:.2f})\n\n"
-            f"🔍 **AI 覆核稽核員檢討報告**：\n"
+            f"🔍 **AI 檢討報告**：\n"
             f"_{review_text}_\n"
             f"━━━━━━━━━━━━━━━━━━━\n"
             f"🎯 **明日觀測預告**：\n"
-            f"AI 已於盤後掃描大盤，鎖定明日觀測標的：【**{best_ticker}**】(預期報酬最強)，將於明早 08:30 進行詳細盤前推演。"
+            f"AI 已於盤後掃描大盤，鎖定明日觀測標的：【**{best_ticker}**】(預期報酬最強)，將於明早 08:30 進行詳細盤前預測。"
         )
         
         subs = StorageHelper.get_subscribers()
