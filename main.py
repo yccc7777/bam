@@ -114,7 +114,10 @@ async def predict(update: Update, context: ContextTypes.DEFAULT_TYPE):
             raise ValueError("計算特徵後無有效資料可供訓練。")
             
         # 3. Train & Predict
-        ml_model.train(train_data)
+        if not ml_model.load_weights("GLOBAL"):
+            logger.info("Weights not found locally. Running inline training fallback.")
+            ml_model.train(train_data, "GLOBAL")
+            
         predictions = ml_model.predict(train_data)
         
         # Convert predictions safely
@@ -124,15 +127,18 @@ async def predict(update: Update, context: ContextTypes.DEFAULT_TYPE):
             else:
                 predictions[k] = float(v)
         
-        inst_buy = True 
-        is_top_5 = (predictions['1W'] > 0.02)
-        
-        # 4. Fetch recent news for RAG
+        # 4. Fetch fundamentals and news
+        fundamentals = fetcher.fetch_fundamentals(ticker)
         news_context = fetcher.fetch_recent_news(ticker)
 
         # 5. Generate narrative via Multi-Agent Debate
         debate_engine = AgentDebateEngine(api_key=GEMINI_API_KEY)
-        debate_result = debate_engine.run_debate(ticker, predictions, news_context)
+        debate_result = debate_engine.run_debate(
+            ticker=ticker, 
+            probabilities=predictions, 
+            news_context=news_context,
+            fundamentals=fundamentals
+        )
         
         # 6. Format beautiful output
         news_display = "無即時新聞"
@@ -141,18 +147,27 @@ async def predict(update: Update, context: ContextTypes.DEFAULT_TYPE):
             news_display = first_news_title if first_news_title else "無即時新聞"
 
         response_text = (
-            f"📊 **{ticker} 即時預測報告**\n"
+            f"📊 **{ticker} 深度評估報告 (XGBoost + LSTM)**\n"
             f"━━━━━━━━━━━━━━━━━━━\n"
             f"💰 **最新收盤價：** ${current_price:.2f}\n"
-            f"📰 **即時頭條：** _{news_display}_\n\n"
-            f"📈 **AI 預期報酬率：**\n"
-            f"   • 1 週預期： {predictions.get('1W', 0)*100:+.2f}%\n"
-            f"   • 2 週預期： {predictions.get('2W', 0)*100:+.2f}%\n"
-            f"   • 3 週預期： {predictions.get('3W', 0)*100:+.2f}%\n"
-            f"   • 1 個月預期：{predictions.get('1M', 0)*100:+.2f}%\n"
-            f"   • 3 個月預期：{predictions.get('3M', 0)*100:+.2f}%\n\n"
-            f"🎯 **最終行動建議**：\n**{debate_result['final_action']}**\n"
+            f"📈 **基本面數據：**\n"
+            f"   • 本益比 (PE)：{fundamentals.get('PE')}\n"
+            f"   • 股價淨值比 (PB)：{fundamentals.get('PB')}\n"
+            f"   • 每股盈餘 (EPS)：{fundamentals.get('EPS')}\n"
+            f"   • 營收年增率 (YoY)：{fundamentals.get('YOY')}\n\n"
+            f"🔥 **AI 預估上漲機率：**\n"
+            f"   • 1 週預期： {predictions.get('1W', 0)*100:.1f}%\n"
+            f"   • 2 週預期： {predictions.get('2W', 0)*100:.1f}%\n"
+            f"   • 3 週預期： {predictions.get('3W', 0)*100:.1f}%\n"
+            f"   • 1 個月預期：{predictions.get('1M', 0)*100:.1f}%\n"
+            f"   • 3 個月預期：{predictions.get('3M', 0)*100:.1f}%\n\n"
+            f"🤖 **四大市場參與者實時觀點：**\n"
+            f"👨‍💼 **經理人 (法說會)**：\n_{debate_result['management']}_\n\n"
+            f"👨‍💻 **分析師 (研究報告)**：\n_{debate_result['analyst']}_\n\n"
+            f"🦅 **外資 (籌碼面)**：\n_{debate_result['foreign']}_\n\n"
+            f"🤡 **散戶 (Threads/PTT)**：\n_{debate_result['retail']}_\n"
             f"━━━━━━━━━━━━━━━━━━━\n"
+            f"🎯 **AI 最終行動建議**：\n**{debate_result['final_action']}**\n\n"
             f"💡 _提示：輸入_ `/buy {ticker} 1000` _模擬買進 1 張。_"
         )
         
@@ -174,14 +189,18 @@ async def predict(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def top(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    loading_msg = await update.message.reply_text("⏳ [系統運算中] 正在下載市場價量日線資料，並計算特徵值與預期報酬...")
+    loading_msg = await update.message.reply_text("⏳ [系統運算中] 正在載入模型並計算台灣 50 成分股上漲機率...")
     
     try:
         fetcher = DataFetcher()
         processor = DataProcessor()
+        ml_model = MLModel(list(FORECAST_WINDOWS.keys()))
         
-        # Sample top 10 tickers to save time, picking most popular basically
-        scan_tickers = TW50_TICKERS[:10] 
+        # Use pre-trained MLOps weights if available, else skip inline training for top (too slow)
+        ml_model.load_weights("GLOBAL")
+        
+        # Scan top 20 tickers for robust ranking
+        scan_tickers = TW50_TICKERS[:20] 
         
         df_raw = fetcher.fetch_yahoo_finance_data(scan_tickers, "2023-01-01", pd.Timestamp.now().strftime("%Y-%m-%d"))
         
@@ -196,14 +215,13 @@ async def top(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     
             if len(df_ticker) < 100: continue
             
-            # Process & Train inline
+            # Process
             df_processed = processor.process_stock_data(df_ticker, FORECAST_WINDOWS)
             train_data = df_processed.dropna(subset=['MA_60', 'MACD'])
             if train_data.empty: continue
             
-            model = MLModel(list(FORECAST_WINDOWS.keys()))
-            model.train(train_data)
-            preds = model.predict(train_data)
+            # Only predict
+            preds = ml_model.predict(train_data)
             
             current_price = df_ticker['Close'].iloc[-1]
             if isinstance(current_price, pd.Series):
@@ -219,12 +237,12 @@ async def top(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 
             top_stocks_unsorted.append((ticker, current_price, pred_1w))
             
-        # Sort and take top 5
-        top_stocks = sorted(top_stocks_unsorted, key=lambda x: x[2], reverse=True)[:5]
+        # Sort and take top 10
+        top_stocks = sorted(top_stocks_unsorted, key=lambda x: x[2], reverse=True)[:10]
         
-        response_text = "🏆 **台灣 50 AI即時預測飆股排行 (Top 5)**\n━━━━━━━━━━━━━━━━━━━\n"
-        for i, (ticker, price, ret_1w) in enumerate(top_stocks, 1):
-            response_text += f"{i}. **{ticker}** | 價: ${price:.2f} | 1週預期: **{ret_1w*100:+.2f}%**\n"
+        response_text = "🏆 **台灣 50 AI 漲幅機率飆股排行 (Top 10)**\n━━━━━━━━━━━━━━━━━━━\n"
+        for i, (ticker, price, prob) in enumerate(top_stocks, 1):
+            response_text += f"{i}. **{ticker}** | 價: ${price:.2f} | 漲幅機率: **{prob*100:.1f}%**\n"
             
         response_text += "━━━━━━━━━━━━━━━━━━━\n💡 _輸入 `/predict <代號>` 可查看單一個股詳細預測。_"
         

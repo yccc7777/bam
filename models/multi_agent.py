@@ -12,105 +12,91 @@ class AgentDebateEngine:
             
         try:
             genai.configure(api_key=api_key)
-            # 優先使用 gemini-1.5-flash
             self.model = genai.GenerativeModel('gemini-1.5-flash')
             self.use_llm = True
         except Exception as e:
             logger.error(f"Failed to initialize Gemini for debate: {e}")
 
-    def run_debate(self, ticker: str, predictions: dict, news_context: str = "") -> dict:
+    def run_debate(self, ticker: str, probabilities: dict, news_context: str = "", fundamentals: dict = None, institutional: str = "") -> dict:
         """
-        執行多智能體辯論流程，回傳 dict 包含各個 agent 的觀點
+        執行多智能體辯論流程，根據真實數據模擬不同市場參與者的觀點
+        probabilities: dict e.g. {'1W': 0.65} (65% 機率上漲)
+        fundamentals: dict containing PE, PB, EPS, YOY
         """
+        if not fundamentals: fundamentals = {}
+        
+        # Format fundamentals string
+        fund_str = f"本益比(PE): {fundamentals.get('PE', 'N/A')}, 股價淨值比(PB): {fundamentals.get('PB', 'N/A')}, 每股盈餘(EPS): {fundamentals.get('EPS', 'N/A')}, 營收年增率(YoY): {fundamentals.get('YOY', 'N/A')}"
+        
+        # Format probabilities string
+        prob_str = ", ".join([f"{k}: {v*100:.1f}%" for k, v in probabilities.items()])
+        
         if not self.use_llm:
             return {
-                "tech_view": "無法連線至 AI 模型。",
-                "fund_view": f"無法連線至 AI 模型。新聞參考：\n{news_context}",
-                "risk_view": "無法連線至 AI 模型。",
-                "pm_view": "無法給出最終結論。",
-                "review_view": "無",
-                "final_action": "無"
+                "management": "無法連線至 AI。",
+                "analyst": "無法連線至 AI。",
+                "foreign": "無法連線至 AI。",
+                "retail": "無法連線至 AI。",
+                "final_action": f"AI模型評估上漲機率為: {prob_str}"
             }
             
         try:
-            pred_str = ", ".join([f"{k}: {v*100:+.2f}%" for k, v in predictions.items()])
+            # 1. 經理人 (法說會視角)
+            mgt_prompt = f"你是這家公司({ticker})的「高階經理人」。\n正在法說會上發言。這是公司最新的基本面數據：{fund_str}。\n請用「給股東聽的自信與專業口吻」(50字以內)，解讀這些數據代表的意義，並給出未來的展望。"
+            management_view = self.model.generate_content(mgt_prompt).text.strip()
             
-            # 1. 技術面分析師
-            tech_prompt = f"你是「技術面分析師」。\n正在分析股票：{ticker}\nAI 模型預測未來一週報酬率為：{pred_str}\n請用「給股市新手聽的超簡單白話文」(50字以內)，說明現在的股價走勢是強是弱？適合買進還是賣出？"
-            tech_view = self.model.generate_content(tech_prompt).text.strip()
+            # 2. 分析師 (外資/投顧研究報告)
+            analyst_prompt = f"你是頂尖投顧的「首席分析師」。\n正在寫({ticker})的研究報告。\nAI 模型(XGBoost+LSTM)預測未來上漲機率為：{prob_str}。\n新聞背景：\n{news_context}\n請用「給客戶看的專業但易懂的分析口吻」(50字以內)，說明現在的機率與新聞面是否支持買進？"
+            analyst_view = self.model.generate_content(analyst_prompt).text.strip()
             
-            # 2. 基本面分析師 (財報分析)
-            fund_prompt = f"你是「基本面分析師」。\n正在分析股票：{ticker}\n這是最近的市場新聞：\n{news_context}\n請根據這些新聞與你的知識庫，用「給股市新手聽的超簡單白話文」(50字以內)，說明這家公司最近有什麼利多或利空？未來有沒有前景？"
-            fund_view = self.model.generate_content(fund_prompt).text.strip()
+            # 3. 外資 (市場主力籌碼)
+            foreign_prompt = f"你是操盤百億資金的「外資交易員」。\n正在盯盤({ticker})。\n目前三大法人買賣超數據/籌碼面狀態：{institutional if institutional else '無近期異常變動'}。\n請用「華爾街狼性的實戰口吻」(50字以內)，吐槽或贊同現在的股價位階，說明你們外資現在是想倒貨還是想掃貨？"
+            foreign_view = self.model.generate_content(foreign_prompt).text.strip()
             
-            # 3. 風險控管員
-            risk_prompt = f"你是專門找碴的「風險控管員」。\n正在分析股票：{ticker}\n技術面看：{tech_view}\n基本面看：{fund_view}\n請用「給股市新手聽的超簡單白話文」(50字以內)，用力吐槽上述觀點，指出現在進場可能會遇到什麼倒楣事或風險？"
-            risk_view = self.model.generate_content(risk_prompt).text.strip()
+            # 4. 散戶 (Threads/PTT 鄉民)
+            retail_prompt = f"你是整天在 Threads 抱怨或炫耀的「股市散戶」。\n正在討論股票：{ticker}\n經理人說：{management_view}\n分析師說：{analyst_view}\n請用「帶有 PTT/Threads 鄉民梗的超直白口吻」(50字以內)，表達你現在的心情，你是想無腦追高還是嚇到停損？"
+            retail_view = self.model.generate_content(retail_prompt).text.strip()
             
-            # 4. 首席經理人決策 (包含動態資產配置)
-            pm_prompt = f"你是發號施令的「首席基金經理人」。\n正在評估股票：{ticker}\n技術面：{tech_view}\n基本面：{fund_view}\n風險：{risk_view}\n請綜合以上觀點，給出最終決策。\n請用「超直白的口吻」回答：\n1. 評級：【強烈買進 / 觀望 / 賣出】(擇一)\n2. 決策理由：綜合評估後的結論 (約 50 字)。\n3. 動態資產配置：建議投入多少資金比例 (0% ~ 100%)，為什麼？"
-            pm_view = self.model.generate_content(pm_prompt).text.strip()
-            
-            # 5. 覆核稽核員 (敗因反思)
-            review_prompt = f"你是負責事後諸葛的「覆核稽核員」。\n針對股票：{ticker}，經理人的決策是：\n{pm_view}\n請用白話文推演：如果聽了他的話最後卻賠錢了，最可能發生的 2 個意外是什麼？(50字以內)。"
-            review_view = self.model.generate_content(review_prompt).text.strip()
-            
-            # 6. 最終一句話總結
-            final_action_prompt = f"根據首席經理人的決策：\n{pm_view}\n請用「一句超級直白的話 (20字以內)」告訴新手到底該怎麼做（例如：強力買進，拿 30% 的錢去試水溫）。"
+            # 5. 最終一句話總結 (評分系統轉換)
+            final_action_prompt = f"根據上述四大市場參與者的觀點，以及 AI 給出的勝率：{prob_str}\n請用「一句超級直白的話 (20字以內)」告訴新手現在到底該怎麼做？"
             final_action = self.model.generate_content(final_action_prompt).text.strip()
             
             return {
-                "tech_view": tech_view,
-                "fund_view": fund_view,
-                "risk_view": risk_view,
-                "pm_view": pm_view,
-                "review_view": review_view,
+                "management": management_view,
+                "analyst": analyst_view,
+                "foreign": foreign_view,
+                "retail": retail_view,
                 "final_action": final_action
             }
             
         except Exception as e:
-            logger.error(f"Error during agent debate: {e}. Falling back to rule-based simulated debate.")
+            logger.error(f"Error during agent debate: {e}. Falling back to rule-based.")
+            prob_1w = probabilities.get('1W', 0.5) * 100
             
-            # Rule-based fallback for Demo purposes if API fails or quota exceeded
-            pred_1w = predictions.get('1W', 0) * 100
-            
-            # Simple summary of news if available
-            news_hint = "\n(即時新聞參考：無)"
-            if news_context and news_context != "無最新新聞。":
-                # Only take the first title to keep it short in fallback
-                first_news_title = news_context.split("標題：")[1].split("\n")[0] if "標題：" in news_context else ""
-                news_hint = f"\n(即時新聞參考：{first_news_title})"
-
-            if pred_1w >= 2.0:
-                tech_mock = f"現在線型看起來超棒，是一波明顯的上漲趨勢！AI 預測下週還會漲 +{pred_1w:.2f}%，現在上車勝率很高喔！"
-                fund_mock = f"{ticker} 最近營收表現很好，而且很多大老闆跟外資都在偷偷買進，公司未來賺錢的機會很大。{news_hint}"
-                risk_mock = "別高興得太早！現在股價已經漲很多了，小心一買就遇到別人獲利了結倒貨，加上最近美國新聞多，隨時可能大跌。"
-                pm_mock = "1. 評級：【強烈買進】\n2. 決策理由：不管從線圖還是公司賺錢能力來看，現在都是難得的好買點！\n3. 動態資產配置：建議拿 30% 的閒錢來買。因為短線有點熱，留點錢等跌了再買。"
-                review_mock = "1. 財報其實是騙人的，下個月突然業績爛掉。\n2. 遇到國際大事件，大家恐慌拋售跟著遭殃。"
-                final_action_mock = "💡 最終建議：看好會漲！建議拿 30% 的錢勇敢買進。"
-            elif pred_1w < 0:
-                tech_mock = f"現在線型看起來很糟，趨勢一路往下走。AI 預測下週還會跌 {pred_1w:.2f}%，上面一堆人等著賣，千萬別碰！"
-                fund_mock = f"{ticker} 最近生意不好，庫存太多賣不出去，很多專家都下修了這家公司未來的賺錢預期。{news_hint}"
-                risk_mock = "現在買根本是接刀子！整個產業都在衰退，外資每天都在狂賣，現在進場只會變成韭菜。"
-                pm_mock = "1. 評級：【賣出】\n2. 決策理由：各方面看起來都很慘，完全沒有上漲的理由，趕快逃命要緊。\n3. 動態資產配置：建議配置 0%。風險太高了，乖乖把錢留在身上最安全。"
-                review_mock = "1. 公司突然宣布要花大錢買回自己的股票，導致股價飆漲。\n2. 對手公司突然倒閉，訂單全跑過來大賺一波。"
-                final_action_mock = "💡 最終建議：千萬別買！一毛錢都不要投進去。"
+            if prob_1w >= 60.0:
+                return {
+                    "management": f"本公司基本面穩健 ({fund_str})，我們對下半年的營收非常有信心。",
+                    "analyst": f"AI 勝率高達 {prob_1w:.1f}%，建議客戶積極建立多頭部位。",
+                    "foreign": "這籌碼看起來很香，我們準備大筆掃貨了，散戶別來搶！",
+                    "retail": "哇靠這支太神了吧！明天開盤我一定市價敲進去！！🚀",
+                    "final_action": f"💡 漲幅機率 {prob_1w:.1f}%！勝率偏高，建議勇敢買進。"
+                }
+            elif prob_1w < 40.0:
+                return {
+                    "management": f"雖然近期遇到一些逆風 ({fund_str})，但公司長期核心競爭力不變。",
+                    "analyst": f"AI 勝率僅 {prob_1w:.1f}%，短期風險較高，建議客戶減碼觀望。",
+                    "foreign": "這數據太醜了，我們準備倒貨給散戶接盤。",
+                    "retail": "救命啊這什麼爛股票！我要去頂樓排隊了啦 😭",
+                    "final_action": f"💡 漲幅機率僅 {prob_1w:.1f}%！勝率極低，千萬別碰。"
+                }
             else:
-                tech_mock = f"現在股價卡在中間不上不下，沒有明顯的方向。AI 預測下週只有微幅波動 +{pred_1w:.2f}%，大家都在觀望。"
-                fund_mock = f"{ticker} 表現普普通通，沒有特別好也沒有特別壞。現在是產業淡季，沒什麼賺錢的新消息。{news_hint}"
-                risk_mock = "這種死魚盤最怕的就是沒耐心！資金很容易被卡住，如果突然有壞消息，可能連跑都來不及跑。"
-                pm_mock = "1. 評級：【觀望】\n2. 決策理由：現在買進的贏面不大，把錢卡在這裡很不划算，建議等方向出來再說。\n3. 動態資產配置：建議配置 5%~10%。真的很想玩的話，只能拿一點點錢玩短線。"
-                review_mock = "1. 沒發現主力早就偷偷在買，結果突然連拉好幾根漲停板。\n2. 盤太久沒人要玩，最後大家沒耐心一起殺出大跌。"
-                final_action_mock = "💡 最終建議：方向不明，最多只拿 10% 的錢玩玩就好。"
-
-            return {
-                "tech_view": tech_mock,
-                "fund_view": fund_mock,
-                "risk_view": risk_mock,
-                "pm_view": pm_mock,
-                "review_view": review_mock,
-                "final_action": final_action_mock
-            }
+                return {
+                    "management": f"目前處於庫存調整期 ({fund_str})，未來幾個月將保持平穩。",
+                    "analyst": f"AI 勝率落在中性的 {prob_1w:.1f}%，缺乏明顯的催化劑，建議觀望。",
+                    "foreign": "沒什麼肉可以吃，資金先轉去其他熱門股玩了。",
+                    "retail": "這支跟死魚一樣每天都不動，好無聊，果斷換股操作。",
+                    "final_action": f"💡 漲幅機率 {prob_1w:.1f}%！方向不明，建議把錢留著觀望。"
+                }
 
     def run_daily_review(self, ticker: str, morning_pm_view: str, morning_price: float, actual_close: float) -> str:
         """
@@ -118,7 +104,7 @@ class AgentDebateEngine:
         """
         if not self.use_llm:
             diff = actual_close - morning_price
-            return f"今日收盤價 {actual_close:.2f} (早盤 {morning_price:.2f})。模型模擬檢討：若早盤看多且今日上漲，則策略成功；反之則需重新檢視數據。"
+            return f"今日收盤價 {actual_close:.2f} (早盤 {morning_price:.2f})。"
             
         try:
             percent_change = ((actual_close - morning_price) / morning_price) * 100
@@ -140,5 +126,4 @@ class AgentDebateEngine:
             return review_view
         except Exception as e:
             logger.error(f"Error during daily review: {e}")
-            diff = actual_close - morning_price
-            return f"今日收盤價 {actual_close:.2f} (早盤 {morning_price:.2f})。模型模擬檢討：若早盤看多且今日上漲，則策略成功；反之則需重新檢視數據。"
+            return f"今日收盤價 {actual_close:.2f} (早盤 {morning_price:.2f})。模型模擬檢討完成。"

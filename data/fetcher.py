@@ -99,3 +99,33 @@ class DataFetcher:
         except Exception as e:
             logger.error(f"Error fetching news for {ticker}: {e}")
             return "無法取得最新新聞。"
+
+    def fetch_fundamentals(self, ticker: str) -> dict:
+        """
+        Fetch fundamental data (PE, PB, EPS, YoY) for a ticker using yfinance.
+        """
+        logger.info(f"Fetching fundamentals for {ticker}...")
+        try:
+            yf_ticker = yf.Ticker(ticker)
+            info = yf_ticker.info
+            
+            # yfinance info keys can vary, handle missing gracefully
+            pe = info.get("trailingPE", "N/A")
+            pb = info.get("priceToBook", "N/A")
+            eps = info.get("trailingEps", "N/A")
+            yoy = info.get("revenueGrowth", "N/A")
+            
+            if isinstance(pe, float): pe = round(pe, 2)
+            if isinstance(pb, float): pb = round(pb, 2)
+            if isinstance(eps, float): eps = round(eps, 2)
+            if isinstance(yoy, float): yoy = f"{round(yoy * 100, 2)}%" # Convert to percentage string
+            
+            return {
+                "PE": pe,
+                "PB": pb,
+                "EPS": eps,
+                "YOY": yoy
+            }
+        except Exception as e:
+            logger.error(f"Error fetching fundamentals for {ticker}: {e}")
+            return {"PE": "N/A", "PB": "N/A", "EPS": "N/A", "YOY": "N/A"}
