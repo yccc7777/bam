@@ -21,13 +21,22 @@ class DataFetcher:
         # Append Taiwan Weighted Index to the list of tickers to fetch
         all_tickers = tickers + ["^TWII"]
         
-        # yfinance download
-        try:
-            data = yf.download(all_tickers, start=start_date, end=end_date)
-            return data
-        except Exception as e:
-            logger.error(f"Error fetching data from Yahoo Finance: {e}")
-            return pd.DataFrame()
+        # yfinance download - sequentially to avoid thread hanging
+        df_list = []
+        for ticker in all_tickers:
+            try:
+                temp = yf.download(ticker, start=start_date, end=end_date, progress=False)
+                if not temp.empty:
+                    # Create MultiIndex columns to match batch download format
+                    temp.columns = pd.MultiIndex.from_product([temp.columns, [ticker]])
+                    df_list.append(temp)
+            except Exception as e:
+                logger.warning(f"Error fetching {ticker}: {e}")
+            time.sleep(0.1) # Prevent rate limiting
+            
+        if df_list:
+            return pd.concat(df_list, axis=1)
+        return pd.DataFrame()
 
     def fetch_twse_institutional_data(self, date_str: str, max_retries=3) -> pd.DataFrame:
         """

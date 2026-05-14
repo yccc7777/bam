@@ -1,7 +1,7 @@
 import logging
 import time
 import os
-import threading
+import asyncio
 import pandas as pd
 import numpy as np
 from telegram import Update
@@ -87,7 +87,12 @@ async def predict(update: Update, context: ContextTypes.DEFAULT_TYPE):
         llm = LLMGenerator(api_key=GEMINI_API_KEY)
         
         # 1. Fetch real data
-        df_raw = fetcher.fetch_yahoo_finance_data([ticker], "2023-01-01", pd.Timestamp.now().strftime("%Y-%m-%d"))
+        loop = asyncio.get_event_loop()
+        df_raw = await loop.run_in_executor(
+            None,
+            fetcher.fetch_yahoo_finance_data, 
+            [ticker], "2023-01-01", pd.Timestamp.now().strftime("%Y-%m-%d")
+        )
         
         if df_raw.empty:
             raise ValueError(f"無法從 yfinance 獲取 {ticker} 的資料。")
@@ -128,16 +133,19 @@ async def predict(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 predictions[k] = float(v)
         
         # 4. Fetch fundamentals and news
-        fundamentals = fetcher.fetch_fundamentals(ticker)
-        news_context = fetcher.fetch_recent_news(ticker)
+        loop = asyncio.get_event_loop()
+        fundamentals = await loop.run_in_executor(None, fetcher.fetch_fundamentals, ticker)
+        news_context = await loop.run_in_executor(None, fetcher.fetch_recent_news, ticker)
 
         # 5. Generate narrative via Multi-Agent Debate
         debate_engine = AgentDebateEngine(api_key=GEMINI_API_KEY)
-        debate_result = debate_engine.run_debate(
-            ticker=ticker, 
-            probabilities=predictions, 
-            news_context=news_context,
-            fundamentals=fundamentals
+        debate_result = await loop.run_in_executor(
+            None,
+            debate_engine.run_debate,
+            ticker, 
+            predictions, 
+            news_context,
+            fundamentals
         )
         
         # 6. Format beautiful output
@@ -199,10 +207,15 @@ async def top(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # Use pre-trained MLOps weights if available, else skip inline training for top (too slow)
         ml_model.load_weights("GLOBAL")
         
-        # Scan top 20 tickers for robust ranking
-        scan_tickers = TW50_TICKERS[:20] 
+        # Scan top 10 tickers to avoid timeout
+        scan_tickers = TW50_TICKERS[:10] 
         
-        df_raw = fetcher.fetch_yahoo_finance_data(scan_tickers, "2023-01-01", pd.Timestamp.now().strftime("%Y-%m-%d"))
+        loop = asyncio.get_event_loop()
+        df_raw = await loop.run_in_executor(
+            None,
+            fetcher.fetch_yahoo_finance_data,
+            scan_tickers, "2023-01-01", pd.Timestamp.now().strftime("%Y-%m-%d")
+        )
         
         top_stocks_unsorted = []
         for ticker in scan_tickers:
