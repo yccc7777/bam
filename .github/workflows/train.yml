@@ -5,7 +5,8 @@ on:
     # 每天台灣時間凌晨 02:00 自動執行
     - cron: '0 18 * * *'
   workflow_dispatch: # 允許你隨時手動點擊按鈕執行
-
+permissions:
+  contents: write
 jobs:
   train-and-deploy:
     runs-on: ubuntu-latest
