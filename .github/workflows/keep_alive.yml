@@ -1,0 +1,22 @@
+name: Keep Render Awake
+
+on:
+  schedule:
+    - cron: '*/14 * * * *'
+  workflow_dispatch:
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping Render Service
+        env:
+          RENDER_URL: ${{ secrets.RENDER_EXTERNAL_URL }}
+        run: |
+          if [ -z "$RENDER_URL" ]; then
+            echo "⚠️ Secret RENDER_EXTERNAL_URL is not set. Please add it to GitHub Secrets."
+            exit 1
+          fi
+          echo "Pinging $RENDER_URL to prevent sleep..."
+          curl -s --max-time 10 "$RENDER_URL" || true
+          echo "Ping complete."
