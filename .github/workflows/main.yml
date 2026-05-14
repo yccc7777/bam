@@ -37,16 +37,16 @@ jobs:
     - name: Determine task
       id: set-task
       run: |
-        if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
+                if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
           echo "TASK=${{ github.event.inputs.task_type }}" >> $GITHUB_ENV
         else
-          HOUR=$(date -u +"%H")
-          if [ "$HOUR" == "00" ]; then
+          if [ "${{ github.event.schedule }}" == "30 0 * * 1-5" ]; then
             echo "TASK=premarket" >> $GITHUB_ENV
           else
             echo "TASK=postmarket" >> $GITHUB_ENV
           fi
         fi
+
 
     - name: Run Chronos AI Task
       env:
