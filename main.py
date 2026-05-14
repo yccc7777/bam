@@ -151,14 +151,8 @@ async def predict(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"   • 3 週預期： {predictions.get('3W', 0)*100:+.2f}%\n"
             f"   • 1 個月預期：{predictions.get('1M', 0)*100:+.2f}%\n"
             f"   • 3 個月預期：{predictions.get('3M', 0)*100:+.2f}%\n\n"
-            f"🤖 **AI 多智能體辯論結論：**\n"
-            f"👤 **技術面分析師 (判斷短線趨勢)**：\n_{debate_result['tech_view']}_\n\n"
-            f"📊 **基本面分析師 (評估長線價值)**：\n_{debate_result['fund_view']}_\n\n"
-            f"🛡️ **風險控管員 (專門找碴與挑毛病)**：\n_{debate_result['risk_view']}_\n\n"
-            f"👑 **首席經理人 (綜合決策與資金配置)**：\n_{debate_result['pm_view']}_\n\n"
-            f"🔍 **覆核稽核員 (敗因推演與防呆機制)**：\n_{debate_result['review_view']}_\n"
+            f"🎯 **最終行動建議**：\n**{debate_result['final_action']}**\n"
             f"━━━━━━━━━━━━━━━━━━━\n"
-            f"🎯 **最終行動建議**：\n**{debate_result['final_action']}**\n\n"
             f"💡 _提示：輸入_ `/buy {ticker} 1000` _模擬買進 1 張。_"
         )
         
