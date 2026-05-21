@@ -476,7 +476,7 @@ async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> N
     else:
         logger.error(f"發生未預期錯誤: {context.error}", exc_info=context.error)
 
-async def _run_premarket_report(context: ContextTypes.DEFAULT_TYPE):
+async def _run_premarket_report(context: ContextTypes.DEFAULT_TYPE, manual_chat_id: int = None):
     ticker = StorageHelper.get_tomorrow_target()
     if not ticker:
         ticker = "2330.TW"
@@ -549,6 +549,8 @@ async def _run_premarket_report(context: ContextTypes.DEFAULT_TYPE):
         )
         
         subs = StorageHelper.get_subscribers()
+        if manual_chat_id and manual_chat_id not in subs:
+            subs.append(manual_chat_id)
         for chat_id in subs:
             try:
                 await context.bot.send_message(chat_id=chat_id, text=response_text, parse_mode='Markdown')
@@ -557,12 +559,14 @@ async def _run_premarket_report(context: ContextTypes.DEFAULT_TYPE):
     except Exception as e:
         logger.error(f"Premarket job error: {e}")
         subs = StorageHelper.get_subscribers()
+        if manual_chat_id and manual_chat_id not in subs:
+            subs.append(manual_chat_id)
         for chat_id in subs:
             try:
                 await context.bot.send_message(chat_id=chat_id, text=f"❌ 盤前報告產生失敗：{e}", parse_mode='Markdown')
             except: pass
 
-async def _run_postmarket_review(context: ContextTypes.DEFAULT_TYPE):
+async def _run_postmarket_review(context: ContextTypes.DEFAULT_TYPE, manual_chat_id: int = None):
     date_str = pd.Timestamp.now().strftime("%Y-%m-%d")
     state = StorageHelper.get_daily_state(date_str)
     if not state:
@@ -627,6 +631,8 @@ async def _run_postmarket_review(context: ContextTypes.DEFAULT_TYPE):
         )
         
         subs = StorageHelper.get_subscribers()
+        if manual_chat_id and manual_chat_id not in subs:
+            subs.append(manual_chat_id)
         for chat_id in subs:
             try:
                 await context.bot.send_message(chat_id=chat_id, text=response_text, parse_mode='Markdown')
@@ -634,6 +640,13 @@ async def _run_postmarket_review(context: ContextTypes.DEFAULT_TYPE):
                 logger.error(f"Failed to send to {chat_id}: {e}")
     except Exception as e:
         logger.error(f"Postmarket job error: {e}")
+        subs = StorageHelper.get_subscribers()
+        if manual_chat_id and manual_chat_id not in subs:
+            subs.append(manual_chat_id)
+        for chat_id in subs:
+            try:
+                await context.bot.send_message(chat_id=chat_id, text=f"❌ 盤後檢討產生失敗：{e}", parse_mode='Markdown')
+            except: pass
 
 async def send_premarket_report(context: ContextTypes.DEFAULT_TYPE):
     await _run_premarket_report(context)
@@ -643,11 +656,11 @@ async def send_postmarket_review(context: ContextTypes.DEFAULT_TYPE):
 
 async def test_pre(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("⏳ 手動觸發盤前報告測試（已排入背景處理，請稍候）...", parse_mode='Markdown')
-    asyncio.create_task(_run_premarket_report(context))
+    asyncio.create_task(_run_premarket_report(context, update.message.chat_id))
 
 async def test_post(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("⏳ 手動觸發盤後檢討測試（已排入背景處理，請稍候）...", parse_mode='Markdown')
-    asyncio.create_task(_run_postmarket_review(context))
+    asyncio.create_task(_run_postmarket_review(context, update.message.chat_id))
 
 def main():
     if not TELEGRAM_BOT_TOKEN or TELEGRAM_BOT_TOKEN == "your_telegram_bot_token":
