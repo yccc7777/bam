@@ -488,15 +488,14 @@ async def _run_premarket_report(context: ContextTypes.DEFAULT_TYPE):
         llm = LLMGenerator(api_key=GEMINI_API_KEY)
         
         # 1. Fetch data
-        df_raw = fetcher.fetch_yahoo_finance_data([ticker], "2023-01-01", pd.Timestamp.now().strftime("%Y-%m-%d"))
+        loop = asyncio.get_event_loop()
+        df_raw = await loop.run_in_executor(None, fetcher.fetch_yahoo_finance_data, [ticker], "2023-01-01", pd.Timestamp.now().strftime("%Y-%m-%d"))
         if df_raw.empty: return
 
         df_ticker = pd.DataFrame()
         for col in ['Open', 'High', 'Low', 'Close', 'Volume']:
             if (col, ticker) in df_raw.columns:
                 df_ticker[col] = df_raw[(col, ticker)]
-            elif col in df_raw.columns:
-                df_ticker[col] = df_raw[col]
                 
         if df_ticker.empty or len(df_ticker) < 100: return
             
@@ -517,13 +516,18 @@ async def _run_premarket_report(context: ContextTypes.DEFAULT_TYPE):
             else: predictions[k] = float(v)
                 
         # 4. Debate & News
-        news_context = fetcher.fetch_recent_news(ticker)
+        fundamentals = await loop.run_in_executor(None, fetcher.fetch_fundamentals, ticker)
+        news_context = await loop.run_in_executor(None, fetcher.fetch_recent_news, ticker)
+        ptt_context = await loop.run_in_executor(None, fetcher.fetch_ptt_comments, ticker, 30)
+        institutional = await loop.run_in_executor(None, fetcher.get_latest_twse_institutional, ticker)
+        mops_context = await loop.run_in_executor(None, fetcher.fetch_mops_investor_conference, ticker)
+
         debate_engine = AgentDebateEngine(api_key=GEMINI_API_KEY)
-        debate_result = debate_engine.run_debate(ticker, predictions, news_context)
+        debate_result = await loop.run_in_executor(None, debate_engine.run_debate, ticker, predictions, news_context, fundamentals, institutional, ptt_context, mops_context)
         
         # 5. Save State
         date_str = pd.Timestamp.now().strftime("%Y-%m-%d")
-        StorageHelper.save_daily_state(date_str, ticker, predictions, debate_result['pm_view'], float(current_price))
+        StorageHelper.save_daily_state(date_str, ticker, predictions, debate_result['management'], float(current_price))
         
         # 6. Broadcast
         news_display = "無即時新聞"
@@ -563,14 +567,15 @@ async def _run_postmarket_review(context: ContextTypes.DEFAULT_TYPE):
     try:
         fetcher = DataFetcher()
         # Fetch today's close price
-        df_raw = fetcher.fetch_yahoo_finance_data([ticker], "2023-01-01", (pd.Timestamp.now() + pd.Timedelta(days=1)).strftime("%Y-%m-%d"))
+        loop = asyncio.get_event_loop()
+        df_raw = await loop.run_in_executor(None, fetcher.fetch_yahoo_finance_data, [ticker], "2023-01-01", (pd.Timestamp.now() + pd.Timedelta(days=1)).strftime("%Y-%m-%d"))
         if df_raw.empty: return
         
         close_series = df_raw['Close'][ticker] if ('Close', ticker) in df_raw.columns else df_raw['Close']
         actual_close = float(close_series.iloc[-1])
         
         debate_engine = AgentDebateEngine(api_key=GEMINI_API_KEY)
-        review_text = debate_engine.run_daily_review(ticker, state['pm_view'], state['morning_price'], actual_close)
+        review_text = await loop.run_in_executor(None, debate_engine.run_daily_review, ticker, state['pm_view'], state['morning_price'], actual_close)
         
         # --- Scan for tomorrow's target ---
         best_ticker = "2330.TW"
@@ -578,12 +583,11 @@ async def _run_postmarket_review(context: ContextTypes.DEFAULT_TYPE):
         try:
             scan_tickers = TW50_TICKERS[:15] # Scan top 15 to save time
             processor = DataProcessor()
-            df_scan_raw = fetcher.fetch_yahoo_finance_data(scan_tickers, "2023-01-01", pd.Timestamp.now().strftime("%Y-%m-%d"))
+            df_scan_raw = await loop.run_in_executor(None, fetcher.fetch_yahoo_finance_data, scan_tickers, "2023-01-01", pd.Timestamp.now().strftime("%Y-%m-%d"))
             for t in scan_tickers:
                 df_t = pd.DataFrame()
                 for col in ['Open', 'High', 'Low', 'Close', 'Volume']:
                     if (col, t) in df_scan_raw.columns: df_t[col] = df_scan_raw[(col, t)]
-                    elif col in df_scan_raw.columns: df_t[col] = df_scan_raw[col]
                 if len(df_t) < 100: continue
                 
                 df_processed = processor.process_stock_data(df_t, FORECAST_WINDOWS)
