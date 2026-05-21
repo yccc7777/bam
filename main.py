@@ -101,9 +101,6 @@ async def predict(update: Update, context: ContextTypes.DEFAULT_TYPE):
         for col in ['Open', 'High', 'Low', 'Close', 'Volume']:
             if (col, ticker) in df_raw.columns:
                 df_ticker[col] = df_raw[(col, ticker)]
-            elif col in df_raw.columns:
-                df_ticker[col] = df_raw[col]
-                
         if df_ticker.empty or len(df_ticker) < 100:
             raise ValueError(f"資料不足夠訓練模型 (取得 {len(df_ticker)} 筆資料)")
             
@@ -229,9 +226,6 @@ async def top(update: Update, context: ContextTypes.DEFAULT_TYPE):
             for col in ['Open', 'High', 'Low', 'Close', 'Volume']:
                 if (col, ticker) in df_raw.columns:
                     df_ticker[col] = df_raw[(col, ticker)]
-                elif col in df_raw.columns:
-                    df_ticker[col] = df_raw[col]
-                    
             if len(df_ticker) < 100: continue
             
             # Process

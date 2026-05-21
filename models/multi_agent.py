@@ -50,7 +50,7 @@ class AgentDebateEngine:
             analyst_view = self.model.generate_content(analyst_prompt).text.strip()
             
             # 3. 外資 (市場主力籌碼)
-            foreign_prompt = f"你是操盤百億資金的「外資交易員」。\n正在盯盤({ticker})。\n目前的真實籌碼數據(證交所三大法人買賣超)：\n{institutional if institutional else '無近期異常變動'}。\n請根據這些真實籌碼數據，用「華爾街狼性的實戰口吻」(50字以內)，吐槽或贊同現在的股價位階，說明你們外資現在是想倒貨還是想掃貨？"
+            foreign_prompt = f"你是操盤百億資金的「專業外資機構經理人」。\n正在盯盤({ticker})。\n目前的真實籌碼數據(證交所三大法人買賣超)：\n{institutional if institutional else '無近期異常變動'}。\n請根據這些真實籌碼數據，用「專業、客觀且嚴謹的機構法人分析口吻」(50字以內)，分析目前的股價位階與籌碼動向，說明機構目前的資金配置傾向（加碼或減碼）？"
             foreign_view = self.model.generate_content(foreign_prompt).text.strip()
             
             # 4. 散戶 (PTT 鄉民)
@@ -77,7 +77,7 @@ class AgentDebateEngine:
                 return {
                     "management": f"本公司基本面穩健 ({fund_str})，我們對下半年的營收非常有信心。",
                     "analyst": f"AI 勝率高達 {prob_1w:.1f}%，建議客戶積極建立多頭部位。",
-                    "foreign": "這籌碼看起來很香，我們準備大筆掃貨了，散戶別來搶！",
+                    "foreign": "從近期的籌碼動向與數據分析，外資目前具備高度參與意願，傾向於持續擴大多頭部位。",
                     "retail": "從目前的鄉民討論與數據來看，市場情緒偏向樂觀，我認為值得進場佈局。",
                     "final_action": f"💡 漲幅機率 {prob_1w:.1f}%！勝率偏高，建議勇敢買進。"
                 }
@@ -85,7 +85,7 @@ class AgentDebateEngine:
                 return {
                     "management": f"雖然近期遇到一些逆風 ({fund_str})，但公司長期核心競爭力不變。",
                     "analyst": f"AI 勝率僅 {prob_1w:.1f}%，短期風險較高，建議客戶減碼觀望。",
-                    "foreign": "這數據太醜了，我們準備倒貨給散戶接盤。",
+                    "foreign": "基於目前的籌碼流出狀況與不確定性，外資機構預計將縮減部位以控制下行風險。",
                     "retail": "考量到目前市場瀰漫著悲觀情緒與較低的預期勝率，我會選擇停損或觀望，避免風險。",
                     "final_action": f"💡 漲幅機率僅 {prob_1w:.1f}%！勝率極低，千萬別碰。"
                 }
@@ -93,7 +93,7 @@ class AgentDebateEngine:
                 return {
                     "management": f"目前處於庫存調整期 ({fund_str})，未來幾個月將保持平穩。",
                     "analyst": f"AI 勝率落在中性的 {prob_1w:.1f}%，缺乏明顯的催化劑，建議觀望。",
-                    "foreign": "沒什麼肉可以吃，資金先轉去其他熱門股玩了。",
+                    "foreign": "目前的籌碼結構呈現中性，並未出現明確的主力進駐訊號，機構資金將暫時維持中立觀望。",
                     "retail": "近期討論熱度不高且走勢不明確，這檔股票目前缺乏吸引力，我會轉往其他標的。",
                     "final_action": f"💡 漲幅機率 {prob_1w:.1f}%！方向不明，建議把錢留著觀望。"
                 }
