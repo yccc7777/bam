@@ -17,31 +17,42 @@ class DataFetcher:
     def fetch_yahoo_finance_data(self, tickers: list, start_date: str, end_date: str) -> pd.DataFrame:
         """
         Fetch OHLCV data for given tickers and the market index (^TWII).
+        Uses FinMind API to avoid yfinance rate limits for Taiwan stocks.
         """
-        logger.info(f"Fetching Yahoo Finance data for {len(tickers)} tickers and ^TWII...")
+        logger.info(f"Fetching FinMind data for {len(tickers)} tickers and ^TWII...")
         
-        # Append Taiwan Weighted Index to the list of tickers to fetch
         all_tickers = tickers + ["^TWII"]
-        
-        # Setup session to bypass yfinance rate limits
-        session = requests.Session()
-        session.headers.update({
-            'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-        })
-        
-        # yfinance download - sequentially to avoid thread hanging
         df_list = []
+        
         for ticker in all_tickers:
             try:
-                temp = yf.download(ticker, start=start_date, end=end_date, progress=False, session=session)
-                if not temp.empty:
-                    # Create MultiIndex columns to match batch download format if it's not already
-                    if not isinstance(temp.columns, pd.MultiIndex):
-                        temp.columns = pd.MultiIndex.from_product([temp.columns, [ticker]])
-                    df_list.append(temp)
+                # Convert ^TWII to TAIEX, and strip .TW/.TWO for stock codes
+                clean_ticker = 'TAIEX' if ticker == '^TWII' else ticker.replace('.TW', '').replace('.TWO', '')
+                url = f'https://api.finmindtrade.com/api/v4/data?dataset=TaiwanStockPrice&data_id={clean_ticker}&start_date={start_date}&end_date={end_date}'
+                
+                res = requests.get(url, timeout=10)
+                if res.status_code == 200:
+                    data = res.json().get('data', [])
+                    if data:
+                        df = pd.DataFrame(data)
+                        df = df.rename(columns={
+                            'open': 'Open',
+                            'max': 'High',
+                            'min': 'Low',
+                            'close': 'Close',
+                            'Trading_Volume': 'Volume',
+                            'date': 'Date'
+                        })
+                        df['Date'] = pd.to_datetime(df['Date'])
+                        df = df.set_index('Date')
+                        df = df[['Open', 'High', 'Low', 'Close', 'Volume']]
+                        
+                        # Create MultiIndex columns to match yfinance format
+                        df.columns = pd.MultiIndex.from_product([df.columns, [ticker]])
+                        df_list.append(df)
             except Exception as e:
-                logger.warning(f"Error fetching {ticker}: {e}")
-            time.sleep(0.5) # Prevent rate limiting
+                logger.warning(f"Error fetching {ticker} from FinMind: {e}")
+            time.sleep(0.5) # Prevent rate limiting on FinMind
             
         if df_list:
             return pd.concat(df_list, axis=1)
