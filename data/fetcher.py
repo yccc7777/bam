@@ -278,30 +278,47 @@ class DataFetcher:
 
     def fetch_fundamentals(self, ticker: str) -> dict:
         """
-        Fetch fundamental data (PE, PB, EPS, YoY) for a ticker using yfinance.
+        Fetch fundamental data (PE, PB, EPS, YoY) using FinMind API to avoid yfinance rate limits.
         """
-        logger.info(f"Fetching fundamentals for {ticker}...")
+        import datetime
+        logger.info(f"Fetching FinMind fundamentals for {ticker}...")
         
-        session = requests.Session()
-        session.headers.update({
-            'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-        })
+        clean_ticker = ticker.split('.')[0]
+        now = datetime.datetime.now()
+        start_date = f"{now.year - 2}-01-01"
+        
+        pe, pb, eps, yoy = "N/A", "N/A", "N/A", "N/A"
         
         try:
-            yf_ticker = yf.Ticker(ticker, session=session)
-            info = yf_ticker.info
-            
-            # yfinance info keys can vary, handle missing gracefully
-            pe = info.get("trailingPE", "N/A")
-            pb = info.get("priceToBook", "N/A")
-            eps = info.get("trailingEps", "N/A")
-            yoy = info.get("revenueGrowth", "N/A")
-            
-            if isinstance(pe, float): pe = round(pe, 2)
-            if isinstance(pb, float): pb = round(pb, 2)
-            if isinstance(eps, float): eps = round(eps, 2)
-            if isinstance(yoy, float): yoy = f"{round(yoy * 100, 2)}%" # Convert to percentage string
-            
+            # 1. Fetch PE & PB
+            url_per = f'https://api.finmindtrade.com/api/v4/data?dataset=TaiwanStockPER&data_id={clean_ticker}&start_date={now.year}-01-01'
+            res_per = requests.get(url_per, timeout=10)
+            if res_per.status_code == 200 and res_per.json().get('data'):
+                latest_per = res_per.json()['data'][-1]
+                pe = latest_per.get('PER', 'N/A')
+                pb = latest_per.get('PBR', 'N/A')
+                
+            # 2. Fetch EPS
+            url_eps = f'https://api.finmindtrade.com/api/v4/data?dataset=TaiwanStockFinancialStatements&data_id={clean_ticker}&start_date={start_date}'
+            res_eps = requests.get(url_eps, timeout=10)
+            if res_eps.status_code == 200 and res_eps.json().get('data'):
+                eps_data = [d for d in res_eps.json()['data'] if d.get('type') == 'EPS']
+                if eps_data:
+                    eps = eps_data[-1].get('value', 'N/A')
+                    
+            # 3. Fetch YoY (Revenue Growth)
+            url_rev = f'https://api.finmindtrade.com/api/v4/data?dataset=TaiwanStockMonthRevenue&data_id={clean_ticker}&start_date={start_date}'
+            res_rev = requests.get(url_rev, timeout=10)
+            if res_rev.status_code == 200 and res_rev.json().get('data'):
+                rev_data = res_rev.json()['data']
+                if len(rev_data) > 12:
+                    latest_rev = rev_data[-1]
+                    # Find corresponding month last year
+                    last_year_rev = next((d for d in rev_data if d['revenue_year'] == latest_rev['revenue_year'] - 1 and d['revenue_month'] == latest_rev['revenue_month']), None)
+                    if last_year_rev and last_year_rev['revenue'] > 0:
+                        yoy_val = (latest_rev['revenue'] - last_year_rev['revenue']) / last_year_rev['revenue'] * 100
+                        yoy = f"{round(yoy_val, 2)}%"
+                        
             return {
                 "PE": pe,
                 "PB": pb,
@@ -309,5 +326,5 @@ class DataFetcher:
                 "YOY": yoy
             }
         except Exception as e:
-            logger.error(f"Error fetching fundamentals for {ticker}: {e}")
+            logger.error(f"Error fetching FinMind fundamentals for {ticker}: {e}")
             return {"PE": "N/A", "PB": "N/A", "EPS": "N/A", "YOY": "N/A"}
