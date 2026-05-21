@@ -490,14 +490,15 @@ async def _run_premarket_report(context: ContextTypes.DEFAULT_TYPE):
         # 1. Fetch data
         loop = asyncio.get_event_loop()
         df_raw = await loop.run_in_executor(None, fetcher.fetch_yahoo_finance_data, [ticker], "2023-01-01", pd.Timestamp.now().strftime("%Y-%m-%d"))
-        if df_raw.empty: return
+        if df_raw.empty:
+            raise ValueError(f"無法獲取 {ticker} 的資料")
 
         df_ticker = pd.DataFrame()
         for col in ['Open', 'High', 'Low', 'Close', 'Volume']:
             if (col, ticker) in df_raw.columns:
                 df_ticker[col] = df_raw[(col, ticker)]
-                
-        if df_ticker.empty or len(df_ticker) < 100: return
+        if df_ticker.empty or len(df_ticker) < 100:
+            raise ValueError(f"{ticker} 的資料筆數不足")
             
         current_price = df_ticker['Close'].iloc[-1]
         if isinstance(current_price, pd.Series):
@@ -505,8 +506,8 @@ async def _run_premarket_report(context: ContextTypes.DEFAULT_TYPE):
             
         # 2. Features
         df_processed = processor.process_stock_data(df_ticker, FORECAST_WINDOWS)
-        train_data = df_processed.dropna(subset=['MA_60', 'MACD'])
-        if train_data.empty: return
+        if train_data.empty:
+            raise ValueError(f"{ticker} 無法產生有效訓練特徵")
             
         # 3. Train & Predict
         ml_model.train(train_data)
@@ -555,6 +556,11 @@ async def _run_premarket_report(context: ContextTypes.DEFAULT_TYPE):
                 logger.error(f"Failed to send to {chat_id}: {e}")
     except Exception as e:
         logger.error(f"Premarket job error: {e}")
+        subs = StorageHelper.get_subscribers()
+        for chat_id in subs:
+            try:
+                await context.bot.send_message(chat_id=chat_id, text=f"❌ 盤前報告產生失敗：{e}", parse_mode='Markdown')
+            except: pass
 
 async def _run_postmarket_review(context: ContextTypes.DEFAULT_TYPE):
     date_str = pd.Timestamp.now().strftime("%Y-%m-%d")
@@ -636,12 +642,12 @@ async def send_postmarket_review(context: ContextTypes.DEFAULT_TYPE):
     await _run_postmarket_review(context)
 
 async def test_pre(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("⏳ 手動觸發盤前報告測試...", parse_mode='Markdown')
-    await _run_premarket_report(context)
+    await update.message.reply_text("⏳ 手動觸發盤前報告測試（已排入背景處理，請稍候）...", parse_mode='Markdown')
+    asyncio.create_task(_run_premarket_report(context))
 
 async def test_post(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("⏳ 手動觸發盤後檢討測試...", parse_mode='Markdown')
-    await _run_postmarket_review(context)
+    await update.message.reply_text("⏳ 手動觸發盤後檢討測試（已排入背景處理，請稍候）...", parse_mode='Markdown')
+    asyncio.create_task(_run_postmarket_review(context))
 
 def main():
     if not TELEGRAM_BOT_TOKEN or TELEGRAM_BOT_TOKEN == "your_telegram_bot_token":
