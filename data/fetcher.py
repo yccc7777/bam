@@ -14,7 +14,7 @@ class DataFetcher:
         # TWSE API Endpoint for institutional investors trading (三大法人買賣超)
         self.twse_api_url = "https://www.twse.com.tw/fund/T86?response=json&selectType=ALL&date={date}"
 
-    def fetch_yahoo_finance_data(self, tickers: list, start_date: str, end_date: str) -> dict:
+    def fetch_yahoo_finance_data(self, tickers: list, start_date: str, end_date: str) -> pd.DataFrame:
         """
         Fetch OHLCV data for given tickers and the market index (^TWII).
         """
@@ -23,11 +23,17 @@ class DataFetcher:
         # Append Taiwan Weighted Index to the list of tickers to fetch
         all_tickers = tickers + ["^TWII"]
         
+        # Setup session to bypass yfinance rate limits
+        session = requests.Session()
+        session.headers.update({
+            'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+        })
+        
         # yfinance download - sequentially to avoid thread hanging
         df_list = []
         for ticker in all_tickers:
             try:
-                temp = yf.download(ticker, start=start_date, end=end_date, progress=False)
+                temp = yf.download(ticker, start=start_date, end=end_date, progress=False, session=session)
                 if not temp.empty:
                     # Create MultiIndex columns to match batch download format if it's not already
                     if not isinstance(temp.columns, pd.MultiIndex):
@@ -35,7 +41,7 @@ class DataFetcher:
                     df_list.append(temp)
             except Exception as e:
                 logger.warning(f"Error fetching {ticker}: {e}")
-            time.sleep(0.1) # Prevent rate limiting
+            time.sleep(0.5) # Prevent rate limiting
             
         if df_list:
             return pd.concat(df_list, axis=1)
@@ -264,8 +270,14 @@ class DataFetcher:
         Fetch fundamental data (PE, PB, EPS, YoY) for a ticker using yfinance.
         """
         logger.info(f"Fetching fundamentals for {ticker}...")
+        
+        session = requests.Session()
+        session.headers.update({
+            'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+        })
+        
         try:
-            yf_ticker = yf.Ticker(ticker)
+            yf_ticker = yf.Ticker(ticker, session=session)
             info = yf_ticker.info
             
             # yfinance info keys can vary, handle missing gracefully
