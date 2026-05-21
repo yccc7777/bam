@@ -132,10 +132,13 @@ async def predict(update: Update, context: ContextTypes.DEFAULT_TYPE):
             else:
                 predictions[k] = float(v)
         
-        # 4. Fetch fundamentals and news
+        # 4. Fetch fundamentals, news, and alternative data
         loop = asyncio.get_event_loop()
         fundamentals = await loop.run_in_executor(None, fetcher.fetch_fundamentals, ticker)
         news_context = await loop.run_in_executor(None, fetcher.fetch_recent_news, ticker)
+        ptt_context = await loop.run_in_executor(None, fetcher.fetch_ptt_comments, ticker, 30)
+        institutional = await loop.run_in_executor(None, fetcher.get_latest_twse_institutional, ticker)
+        mops_context = await loop.run_in_executor(None, fetcher.fetch_mops_investor_conference, ticker)
 
         # 5. Generate narrative via Multi-Agent Debate
         debate_engine = AgentDebateEngine(api_key=GEMINI_API_KEY)
@@ -145,7 +148,10 @@ async def predict(update: Update, context: ContextTypes.DEFAULT_TYPE):
             ticker, 
             predictions, 
             news_context,
-            fundamentals
+            fundamentals,
+            institutional,
+            ptt_context,
+            mops_context
         )
         
         # 6. Format beautiful output

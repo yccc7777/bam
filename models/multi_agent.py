@@ -17,7 +17,7 @@ class AgentDebateEngine:
         except Exception as e:
             logger.error(f"Failed to initialize Gemini for debate: {e}")
 
-    def run_debate(self, ticker: str, probabilities: dict, news_context: str = "", fundamentals: dict = None, institutional: str = "") -> dict:
+    def run_debate(self, ticker: str, probabilities: dict, news_context: str = "", fundamentals: dict = None, institutional: str = "", ptt_context: str = "", mops_context: str = "") -> dict:
         """
         執行多智能體辯論流程，根據真實數據模擬不同市場參與者的觀點
         probabilities: dict e.g. {'1W': 0.65} (65% 機率上漲)
@@ -42,7 +42,7 @@ class AgentDebateEngine:
             
         try:
             # 1. 經理人 (法說會視角)
-            mgt_prompt = f"你是這家公司({ticker})的「高階經理人」。\n正在法說會上發言。這是公司最新的基本面數據：{fund_str}。\n請用「給股東聽的自信與專業口吻」(50字以內)，解讀這些數據代表的意義，並給出未來的展望。"
+            mgt_prompt = f"你是這家公司({ticker})的「高階經理人」。\n正在法說會上發言。\n這是公司最新的基本面數據：{fund_str}。\n這是我們在公開資訊觀測站(MOPS)上最新公告的法說會重點摘要：\n{mops_context if mops_context else '無近期法說會特殊聲明'}\n請用「給股東聽的自信與專業口吻」(50字以內)，解讀這些數據或法說會內容，並給出未來的展望。"
             management_view = self.model.generate_content(mgt_prompt).text.strip()
             
             # 2. 分析師 (外資/投顧研究報告)
@@ -50,11 +50,11 @@ class AgentDebateEngine:
             analyst_view = self.model.generate_content(analyst_prompt).text.strip()
             
             # 3. 外資 (市場主力籌碼)
-            foreign_prompt = f"你是操盤百億資金的「外資交易員」。\n正在盯盤({ticker})。\n目前三大法人買賣超數據/籌碼面狀態：{institutional if institutional else '無近期異常變動'}。\n請用「華爾街狼性的實戰口吻」(50字以內)，吐槽或贊同現在的股價位階，說明你們外資現在是想倒貨還是想掃貨？"
+            foreign_prompt = f"你是操盤百億資金的「外資交易員」。\n正在盯盤({ticker})。\n目前的真實籌碼數據(證交所三大法人買賣超)：\n{institutional if institutional else '無近期異常變動'}。\n請根據這些真實籌碼數據，用「華爾街狼性的實戰口吻」(50字以內)，吐槽或贊同現在的股價位階，說明你們外資現在是想倒貨還是想掃貨？"
             foreign_view = self.model.generate_content(foreign_prompt).text.strip()
             
-            # 4. 散戶 (Threads/PTT 鄉民)
-            retail_prompt = f"你是整天在 Threads 抱怨或炫耀的「股市散戶」。\n正在討論股票：{ticker}\n經理人說：{management_view}\n分析師說：{analyst_view}\n請用「帶有 PTT/Threads 鄉民梗的超直白口吻」(50字以內)，表達你現在的心情，你是想無腦追高還是嚇到停損？"
+            # 4. 散戶 (PTT 鄉民)
+            retail_prompt = f"你是關注 PTT 股票版(Stock) 討論的「認真型散戶投資人」。\n正在評估股票：{ticker}\n這是最近 PTT 股票版上鄉民的真實推文與討論：\n{ptt_context if ptt_context else '無近期 PTT 討論'}\n經理人說：{management_view}\n分析師說：{analyst_view}\n請閱讀上述 PTT 真實討論後，用「認真且直白、不使用網路酸民梗的散戶分析口吻」(50字以內)，表達你總結了鄉民情緒與自身評估後的心情，你會選擇進場還是觀望？"
             retail_view = self.model.generate_content(retail_prompt).text.strip()
             
             # 5. 最終一句話總結 (評分系統轉換)
@@ -78,7 +78,7 @@ class AgentDebateEngine:
                     "management": f"本公司基本面穩健 ({fund_str})，我們對下半年的營收非常有信心。",
                     "analyst": f"AI 勝率高達 {prob_1w:.1f}%，建議客戶積極建立多頭部位。",
                     "foreign": "這籌碼看起來很香，我們準備大筆掃貨了，散戶別來搶！",
-                    "retail": "哇靠這支太神了吧！明天開盤我一定市價敲進去！！🚀",
+                    "retail": "從目前的鄉民討論與數據來看，市場情緒偏向樂觀，我認為值得進場佈局。",
                     "final_action": f"💡 漲幅機率 {prob_1w:.1f}%！勝率偏高，建議勇敢買進。"
                 }
             elif prob_1w < 40.0:
@@ -86,7 +86,7 @@ class AgentDebateEngine:
                     "management": f"雖然近期遇到一些逆風 ({fund_str})，但公司長期核心競爭力不變。",
                     "analyst": f"AI 勝率僅 {prob_1w:.1f}%，短期風險較高，建議客戶減碼觀望。",
                     "foreign": "這數據太醜了，我們準備倒貨給散戶接盤。",
-                    "retail": "救命啊這什麼爛股票！我要去頂樓排隊了啦 😭",
+                    "retail": "考量到目前市場瀰漫著悲觀情緒與較低的預期勝率，我會選擇停損或觀望，避免風險。",
                     "final_action": f"💡 漲幅機率僅 {prob_1w:.1f}%！勝率極低，千萬別碰。"
                 }
             else:
@@ -94,7 +94,7 @@ class AgentDebateEngine:
                     "management": f"目前處於庫存調整期 ({fund_str})，未來幾個月將保持平穩。",
                     "analyst": f"AI 勝率落在中性的 {prob_1w:.1f}%，缺乏明顯的催化劑，建議觀望。",
                     "foreign": "沒什麼肉可以吃，資金先轉去其他熱門股玩了。",
-                    "retail": "這支跟死魚一樣每天都不動，好無聊，果斷換股操作。",
+                    "retail": "近期討論熱度不高且走勢不明確，這檔股票目前缺乏吸引力，我會轉往其他標的。",
                     "final_action": f"💡 漲幅機率 {prob_1w:.1f}%！方向不明，建議把錢留著觀望。"
                 }
 

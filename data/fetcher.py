@@ -3,6 +3,8 @@ import requests
 import pandas as pd
 import time
 import logging
+import datetime
+from bs4 import BeautifulSoup
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -82,6 +84,153 @@ class DataFetcher:
                 results[d.strftime("%Y-%m-%d")] = df
             time.sleep(3) # Politeness delay to avoid IP ban
         return results
+
+    def get_latest_twse_institutional(self, ticker: str) -> str:
+        """
+        Get the latest available institutional trading data for a specific ticker.
+        Searches backwards up to 10 days to find a valid trading day.
+        Returns a formatted string describing the institutional actions.
+        """
+        logger.info(f"Fetching latest TWSE institutional data for {ticker}...")
+        # yfinance tickers often have '.TW' suffix, remove it for TWSE API
+        clean_ticker = ticker.split('.')[0]
+        
+        for i in range(10):
+            dt = datetime.datetime.now() - datetime.timedelta(days=i)
+            date_str = dt.strftime('%Y%m%d')
+            df = self.fetch_twse_institutional_data(date_str, max_retries=1)
+            if not df.empty:
+                stock_data = df[df['證券代號'] == clean_ticker]
+                if not stock_data.empty:
+                    row = stock_data.iloc[0]
+                    foreign = row.get('外陸資買賣超股數(不含外資自營商)', '0').replace(',', '')
+                    trust = row.get('投信買賣超股數', '0').replace(',', '')
+                    total = row.get('三大法人買賣超股數', '0').replace(',', '')
+                    
+                    try:
+                        foreign_lots = int(foreign) // 1000
+                        trust_lots = int(trust) // 1000
+                        total_lots = int(total) // 1000
+                        
+                        return (f"最近交易日 ({dt.strftime('%Y-%m-%d')}): "
+                                f"外資買賣超 {foreign_lots} 張, "
+                                f"投信買賣超 {trust_lots} 張, "
+                                f"三大法人合計買賣超 {total_lots} 張。")
+                    except ValueError:
+                        return "無法解析籌碼數據格式。"
+            time.sleep(0.5)
+            
+        return "近期無籌碼數據變動。"
+
+    def fetch_ptt_comments(self, ticker: str, limit: int = 30) -> str:
+        """
+        Scrape the PTT Stock board for the latest post regarding the ticker,
+        and extract the latest comments to reflect retail sentiment.
+        """
+        logger.info(f"Fetching PTT comments for {ticker}...")
+        clean_ticker = ticker.split('.')[0]
+        search_url = f"https://www.ptt.cc/bbs/Stock/search?q={clean_ticker}"
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+        }
+        cookies = {'over18': '1'}
+        
+        try:
+            res = requests.get(search_url, headers=headers, cookies=cookies, timeout=10)
+            if res.status_code != 200:
+                return "無法連線至 PTT。"
+                
+            soup = BeautifulSoup(res.text, 'html.parser')
+            titles = soup.find_all('div', class_='title')
+            
+            latest_url = None
+            article_title = ""
+            for t in titles:
+                if t.a:
+                    latest_url = "https://www.ptt.cc" + t.a['href']
+                    article_title = t.a.text.strip()
+                    break
+                    
+            if not latest_url:
+                return "PTT 股票版近期無此標的之討論文章。"
+                
+            # Fetch the actual article
+            art_res = requests.get(latest_url, headers=headers, cookies=cookies, timeout=10)
+            if art_res.status_code != 200:
+                return f"找到文章「{article_title}」，但無法讀取內文。"
+                
+            art_soup = BeautifulSoup(art_res.text, 'html.parser')
+            pushes = art_soup.find_all('div', class_='push')
+            
+            if not pushes:
+                return f"PTT 最新文章：「{article_title}」\n(目前尚無鄉民推文)"
+                
+            comments = []
+            # Get the last `limit` comments to reflect the most recent sentiment
+            for p in pushes[-limit:]:
+                push_content = p.find('span', class_='push-content')
+                if push_content:
+                    text = push_content.text.strip().replace(':', '', 1).strip()
+                    if text:
+                        comments.append(text)
+                        
+            comments_str = "\n".join([f"- {c}" for c in comments])
+            return f"PTT 最新討論：「{article_title}」\n真實鄉民推文：\n{comments_str}"
+            
+        except Exception as e:
+            logger.error(f"Error fetching PTT comments: {e}")
+            return "抓取 PTT 留言時發生錯誤。"
+
+    def fetch_mops_investor_conference(self, ticker: str) -> str:
+        """
+        Fetch Investor Conference (法說會) information from Old MOPS for the given ticker.
+        """
+        import urllib3
+        urllib3.disable_warnings()
+        
+        logger.info(f"Fetching MOPS investor conference for {ticker}...")
+        clean_ticker = ticker.split('.')[0]
+        url = 'https://mopsov.twse.com.tw/mops/web/ajax_t100sb07_1'
+        payload = {
+            'encodeURIComponent': '1',
+            'step': '1',
+            'firstin': '1',
+            'off': '1',
+            'co_id': clean_ticker,
+            'TYPEK': 'all',
+        }
+        
+        try:
+            res = requests.post(url, data=payload, verify=False, timeout=10)
+            if res.status_code != 200:
+                return "無法連線至公開資訊觀測站。"
+                
+            soup = BeautifulSoup(res.text, 'html.parser')
+            tables = soup.find_all('table', class_='hasBorder')
+            
+            if not tables:
+                return "無近期法說會資訊。"
+                
+            info_dict = {}
+            # Just take the first table (most recent conference)
+            for tr in tables[0].find_all('tr'):
+                tds = tr.find_all('td')
+                if len(tds) >= 2:
+                    key = tds[0].text.strip().replace('：', '')
+                    val = tds[1].text.strip()
+                    info_dict[key] = val
+                    
+            if not info_dict:
+                return "無近期法說會資訊。"
+                
+            date = info_dict.get('召開法人說明會日期', '未提供')
+            msg = info_dict.get('法人說明會擇要訊息', '未提供')
+            
+            return f"最新法說會日期：{date}\n法說會重點摘要：{msg}"
+            
+        except Exception as e:
+            logger.error(f"Error fetching MOPS investor conference: {e}")
+            return "抓取法說會資訊時發生錯誤。"
 
     def fetch_recent_news(self, ticker: str, limit: int = 3) -> str:
         """
