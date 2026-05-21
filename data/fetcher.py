@@ -27,8 +27,9 @@ class DataFetcher:
             try:
                 temp = yf.download(ticker, start=start_date, end=end_date, progress=False)
                 if not temp.empty:
-                    # Create MultiIndex columns to match batch download format
-                    temp.columns = pd.MultiIndex.from_product([temp.columns, [ticker]])
+                    # Create MultiIndex columns to match batch download format if it's not already
+                    if not isinstance(temp.columns, pd.MultiIndex):
+                        temp.columns = pd.MultiIndex.from_product([temp.columns, [ticker]])
                     df_list.append(temp)
             except Exception as e:
                 logger.warning(f"Error fetching {ticker}: {e}")
