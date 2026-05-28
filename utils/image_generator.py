@@ -1,5 +1,6 @@
 import os
 import io
+import math
 import urllib.request
 from PIL import Image, ImageDraw, ImageFont
 
@@ -21,16 +22,11 @@ def ensure_fonts():
         print("Downloading Noto Sans TC Bold...")
         urllib.request.urlretrieve(FONT_URL_BOLD, FONT_PATH_BOLD)
 
-def clean_text_for_pillow(text):
-    # Pillow struggles with emojis, so we strip them entirely to keep the layout clean
-    replacements = {
-        '📊': '', '📈': '', '🔥': '', '🤖': '', '👨‍💼': '', 
-        '👨‍💻': '', '🦅': '', '🤡': '', '🎯': '',
-        '💰': '', '💡': '', '🌅': '', '📰': '',
-        '👍': '', '⚠️': ''
-    }
-    for k, v in replacements.items():
-        text = text.replace(k, v)
+def clean_text(text):
+    # Strip emojis to prevent tofu boxes
+    replacements = ['📊', '📈', '🔥', '🤖', '👨‍💼', '👨‍💻', '🦅', '🤡', '🎯', '💰', '💡', '🌅', '📰', '👍', '⚠️']
+    for r in replacements:
+        text = text.replace(r, '')
     return text.strip()
 
 def wrap_text(text, font, max_width, draw):
@@ -54,122 +50,195 @@ def wrap_text(text, font, max_width, draw):
             lines.append(current_line)
     return lines
 
+def draw_gauge(draw, cx, cy, radius, percentage, font, accent_color, bg_color):
+    # Outline arc (0 to 180 degrees mapping to Pillow's 180 to 360)
+    # Pillow angle: 0 is 3 o'clock, 90 is 6 o'clock. So top half is 180 to 360.
+    bbox = [cx - radius, cy - radius, cx + radius, cy + radius]
+    draw.arc(bbox, start=180, end=360, fill="#E0E3E5", width=30)
+    
+    # Value arc
+    end_angle = 180 + (percentage / 100.0) * 180
+    draw.arc(bbox, start=180, end=end_angle, fill=accent_color, width=30)
+    
+    # Tick marks
+    for deg in range(180, 361, 18):
+        rad = math.radians(deg)
+        x_start = cx + (radius - 35) * math.cos(rad)
+        y_start = cy + (radius - 35) * math.sin(rad)
+        x_end = cx + (radius + 10) * math.cos(rad)
+        y_end = cy + (radius + 10) * math.sin(rad)
+        draw.line([(x_start, y_start), (x_end, y_end)], fill="#CCCCCC", width=2)
+        
+    # Percentage text
+    pct_str = f"{percentage:.1f}%"
+    bbox_t = draw.textbbox((0,0), pct_str, font=font)
+    tw = bbox_t[2] - bbox_t[0]
+    draw.text((cx - tw/2, cy - 40), pct_str, font=font, fill="#2C3E50")
+
+def draw_grid_background(draw, width, height):
+    # Light beige/gray background
+    grid_color = "#E8EAEB"
+    cross_color = "#B0B5B9"
+    step = 60
+    
+    # Draw grid lines
+    for x in range(0, width, step):
+        draw.line([(x, 0), (x, height)], fill=grid_color, width=1)
+    for y in range(0, height, step):
+        draw.line([(0, y), (width, y)], fill=grid_color, width=1)
+        
+    # Draw crosshairs
+    cross_size = 10
+    for x in range(step*2, width, step*4):
+        for y in range(step*2, height, step*4):
+            draw.line([(x - cross_size, y), (x + cross_size, y)], fill=cross_color, width=1)
+            draw.line([(x, y - cross_size), (x, y + cross_size)], fill=cross_color, width=1)
+
 def generate_infographic(ticker: str, current_price: float, fundamentals: dict, predictions: dict, debate_result: dict, news_display: str = "") -> bytes:
     ensure_fonts()
     
-    # Image dimensions
-    WIDTH = 800
-    HEIGHT = 1200
-    MARGIN = 40
+    WIDTH = 1200
+    HEIGHT = 900
     
-    # Colors (Dark Theme)
-    BG_COLOR = "#121212"
-    TEXT_MAIN = "#FFFFFF"
-    TEXT_SUB = "#AAAAAA"
-    ACCENT_GREEN = "#00E676"
-    ACCENT_RED = "#FF3D00"
-    PANEL_BG = "#1E1E1E"
+    # Palette
+    BG_COLOR = "#F4F6F7"
+    BORDER_COLOR = "#2C3E50"
+    TEXT_MAIN = "#1A1A1A"
+    TEXT_SUB = "#5C6A79"
+    ACCENT_GREEN = "#1E8449"
     
     img = Image.new('RGB', (WIDTH, HEIGHT), color=BG_COLOR)
     draw = ImageDraw.Draw(img)
+    draw_grid_background(draw, WIDTH, HEIGHT)
     
+    # Fonts
     try:
-        font_title = ImageFont.truetype(FONT_PATH_BOLD, 36)
-        font_subtitle = ImageFont.truetype(FONT_PATH_BOLD, 24)
-        font_body = ImageFont.truetype(FONT_PATH_REGULAR, 20)
-        font_small = ImageFont.truetype(FONT_PATH_REGULAR, 16)
-    except Exception as e:
-        print(f"Font loading error: {e}")
-        font_title = ImageFont.load_default()
-        font_subtitle = ImageFont.load_default()
-        font_body = ImageFont.load_default()
-        font_small = ImageFont.load_default()
+        f_title = ImageFont.truetype(FONT_PATH_BOLD, 42)
+        f_box_title = ImageFont.truetype(FONT_PATH_REGULAR, 24)
+        f_h1 = ImageFont.truetype(FONT_PATH_BOLD, 52)
+        f_body = ImageFont.truetype(FONT_PATH_REGULAR, 18)
+        f_small = ImageFont.truetype(FONT_PATH_REGULAR, 14)
+    except:
+        f_title = f_box_title = f_h1 = f_body = f_small = ImageFont.load_default()
 
-    y_offset = MARGIN
+    margin_x = 60
+    margin_y = 60
     
-    # --- Title ---
-    title_text = f"{ticker} 深度評估報告 (XGBoost + LSTM)"
-    title_text = clean_text_for_pillow(title_text)
-    draw.text((MARGIN, y_offset), title_text, font=font_title, fill=TEXT_MAIN)
-    y_offset += 60
+    # --- Title Bar ---
+    draw.text((margin_x, margin_y), f"{ticker} 深度評估與交易訊號", font=f_title, fill=TEXT_MAIN)
+    draw.text((margin_x, margin_y + 60), "XGBoost + LSTM 雙引擎量化分析報告", font=f_box_title, fill=TEXT_SUB)
     
-    # --- Price ---
-    price_text = f"最新收盤價：${current_price:.2f}"
-    draw.text((MARGIN, y_offset), clean_text_for_pillow(price_text), font=font_subtitle, fill=ACCENT_GREEN)
-    y_offset += 40
+    # Top Row Layout (3 boxes)
+    box_y = margin_y + 120
+    box_w = 340
+    box_h = 240
+    gap = 30
     
-    # --- Divider ---
-    draw.line([(MARGIN, y_offset), (WIDTH - MARGIN, y_offset)], fill=TEXT_SUB, width=1)
-    y_offset += 20
+    # BOX 1: Target
+    bx1 = margin_x
+    draw.rectangle([bx1, box_y, bx1 + box_w, box_y + box_h], outline=BORDER_COLOR, width=2)
+    draw.text((bx1 + 20, box_y + 20), "監控標的", font=f_box_title, fill=TEXT_SUB)
+    draw.text((bx1 + 20, box_y + 70), ticker, font=f_h1, fill=TEXT_MAIN)
+    draw.text((bx1 + 20, box_y + 140), f"最新報價  ${current_price:.2f}", font=f_box_title, fill=TEXT_MAIN)
     
-    # --- Fundamentals Panel ---
-    draw.rounded_rectangle([(MARGIN, y_offset), (WIDTH - MARGIN, y_offset + 160)], fill=PANEL_BG, radius=10)
-    draw.text((MARGIN + 20, y_offset + 15), clean_text_for_pillow("基本面數據"), font=font_subtitle, fill=TEXT_MAIN)
-    fund_str = f"本益比 (PE): {fundamentals.get('PE')}\n股價淨值比 (PB): {fundamentals.get('PB')}\n每股盈餘 (EPS): {fundamentals.get('EPS')}\n營收年增率 (YoY): {fundamentals.get('YOY')}"
+    # BOX 2: Win Rate
+    bx2 = bx1 + box_w + gap
+    draw.rectangle([bx2, box_y, bx2 + box_w, box_y + box_h], outline=BORDER_COLOR, width=2)
+    draw.text((bx2 + 20, box_y + 20), "演算結論 (1週預期)", font=f_box_title, fill=TEXT_SUB)
     
-    # Analysis from AI
-    ai_fund_expl = debate_result.get('fundamental_explanation', '無')
+    win_rate = predictions.get('1W', 0) * 100
+    draw_gauge(draw, bx2 + box_w//2, box_y + box_h - 20, 90, win_rate, f_h1, ACCENT_GREEN, BG_COLOR)
     
-    draw.text((MARGIN + 20, y_offset + 50), clean_text_for_pillow(fund_str), font=font_body, fill=TEXT_SUB)
+    # BOX 3: Action
+    bx3 = bx2 + box_w + gap
+    draw.rectangle([bx3, box_y, bx3 + box_w, box_y + box_h], outline=BORDER_COLOR, width=2)
+    draw.text((bx3 + 20, box_y + 20), "行動指引", font=f_box_title, fill=TEXT_SUB)
     
-    # Explain text wrapped
-    expl_lines = wrap_text(clean_text_for_pillow(f"AI 解析：{ai_fund_expl}"), font_small, WIDTH - MARGIN*2 - 40, draw)
-    expl_y = y_offset + 160 + 10
-    for line in expl_lines:
-        draw.text((MARGIN, expl_y), line, font=font_small, fill=ACCENT_GREEN)
-        expl_y += 25
+    action_text = clean_text(debate_result.get('final_action', '觀望'))
+    # Action Status Box
+    btn_w = 260
+    btn_h = 60
+    btn_x = bx3 + (box_w - btn_w)//2
+    btn_y = box_y + 70
+    draw.rectangle([btn_x, btn_y, btn_x+btn_w, btn_y+btn_h], fill=ACCENT_GREEN)
+    
+    # Check if buy or sell for color (naive)
+    status = "EXECUTE"
+    draw.text((btn_x + 20, btn_y + 12), status, font=f_title, fill="#FFFFFF")
+    
+    act_lines = wrap_text(action_text, f_body, box_w - 40, draw)
+    ay = btn_y + btn_h + 20
+    for line in act_lines:
+        draw.text((bx3 + 20, ay), line, font=f_body, fill=TEXT_MAIN)
+        ay += 25
         
-    y_offset = expl_y + 20
+    # --- Middle Row (Fundamentals) ---
+    my = box_y + box_h + gap
+    draw.rectangle([bx1, my, bx1 + box_w, my + 140], outline=BORDER_COLOR, width=2)
     
-    # --- Predictions ---
-    draw.text((MARGIN, y_offset), clean_text_for_pillow("AI 預估上漲機率"), font=font_subtitle, fill=TEXT_MAIN)
-    y_offset += 35
+    # Grid in fundamental box
+    draw.line([(bx1, my+70), (bx1+box_w, my+70)], fill=BORDER_COLOR, width=1)
+    draw.line([(bx1+box_w/2, my), (bx1+box_w/2, my+140)], fill=BORDER_COLOR, width=1)
     
-    pred_texts = [
-        f"1 週預期： {predictions.get('1W', 0)*100:.1f}%",
-        f"1 個月預期：{predictions.get('1M', 0)*100:.1f}%",
-        f"3 個月預期：{predictions.get('3M', 0)*100:.1f}%"
-    ]
-    for pt in pred_texts:
-        draw.text((MARGIN + 20, y_offset), clean_text_for_pillow(pt), font=font_body, fill=TEXT_SUB)
-        y_offset += 30
-    y_offset += 10
+    pe = fundamentals.get('PE', 'N/A')
+    pb = fundamentals.get('PB', 'N/A')
+    eps = fundamentals.get('EPS', 'N/A')
+    yoy = fundamentals.get('YOY', 'N/A')
     
-    # --- AI Debate Panel ---
-    draw.text((MARGIN, y_offset), clean_text_for_pillow("四大市場參與者實時觀點"), font=font_subtitle, fill=TEXT_MAIN)
-    y_offset += 35
+    draw.text((bx1 + 10, my + 10), "本益比 (PE)", font=f_small, fill=TEXT_SUB)
+    draw.text((bx1 + 10, my + 30), str(pe), font=f_box_title, fill=TEXT_MAIN)
+    draw.text((bx1 + box_w/2 + 10, my + 10), "股價淨值比 (PB)", font=f_small, fill=TEXT_SUB)
+    draw.text((bx1 + box_w/2 + 10, my + 30), str(pb), font=f_box_title, fill=TEXT_MAIN)
+    
+    draw.text((bx1 + 10, my + 80), "每股盈餘 (EPS)", font=f_small, fill=TEXT_SUB)
+    draw.text((bx1 + 10, my + 100), str(eps), font=f_box_title, fill=TEXT_MAIN)
+    draw.text((bx1 + box_w/2 + 10, my + 80), "營收年增率 (YoY)", font=f_small, fill=TEXT_SUB)
+    draw.text((bx1 + box_w/2 + 10, my + 100), str(yoy), font=f_box_title, fill=TEXT_MAIN)
+    
+    # AI Fundament Explanation
+    ai_fund_expl = clean_text(debate_result.get('fundamental_explanation', '無'))
+    draw.rectangle([bx2, my, bx3+box_w, my + 140], outline=BORDER_COLOR, width=2)
+    draw.text((bx2 + 20, my + 15), "AI 基本面解析", font=f_box_title, fill=ACCENT_GREEN)
+    
+    expl_lines = wrap_text(ai_fund_expl, f_body, (box_w*2 + gap) - 40, draw)
+    ey = my + 50
+    for line in expl_lines:
+        draw.text((bx2 + 20, ey), line, font=f_body, fill=TEXT_MAIN)
+        ey += 25
+        
+    # --- Bottom Row (Four Personas) ---
+    by = my + 140 + gap
+    draw.rectangle([bx1, by, bx3+box_w, by + 220], outline=BORDER_COLOR, width=2)
+    draw.text((bx1 + 20, by + 15), "內部展望與外部籌碼共識", font=f_box_title, fill=TEXT_SUB)
     
     roles = [
-        ("經理人 (法說會)", debate_result.get('management', '')),
-        ("分析師 (研究報告)", debate_result.get('analyst', '')),
-        ("外資 (籌碼面)", debate_result.get('foreign', '')),
-        ("散戶 (討論區)", debate_result.get('retail', ''))
+        ("經理人 (法說會)", clean_text(debate_result.get('management', ''))),
+        ("分析師 (研究報告)", clean_text(debate_result.get('analyst', ''))),
+        ("外資 (籌碼面)", clean_text(debate_result.get('foreign', ''))),
+        ("散戶 (討論區)", clean_text(debate_result.get('retail', '')))
     ]
     
-    for r_title, r_text in roles:
-        draw.text((MARGIN, y_offset), clean_text_for_pillow(r_title), font=font_body, fill=ACCENT_GREEN)
-        y_offset += 30
-        lines = wrap_text(clean_text_for_pillow(r_text), font_body, WIDTH - MARGIN*2, draw)
+    # 2x2 grid inside bottom row
+    bw2 = (box_w*3 + gap*2) / 2
+    draw.line([(bx1, by+120), (bx1+(box_w*3+gap*2), by+120)], fill="#D0D3D4", width=1)
+    draw.line([(bx1+bw2, by), (bx1+bw2, by+220)], fill="#D0D3D4", width=1)
+    
+    positions = [
+        (bx1 + 20, by + 50),
+        (bx1 + bw2 + 20, by + 50),
+        (bx1 + 20, by + 130),
+        (bx1 + bw2 + 20, by + 130)
+    ]
+    
+    for idx, (r_title, r_text) in enumerate(roles):
+        px, py = positions[idx]
+        draw.text((px, py), r_title, font=f_body, fill=ACCENT_GREEN)
+        lines = wrap_text(r_text, f_small, bw2 - 40, draw)
+        ly = py + 25
         for line in lines:
-            draw.text((MARGIN + 20, y_offset), line, font=font_body, fill=TEXT_SUB)
-            y_offset += 25
-        y_offset += 10
-        
-    # --- Final Action ---
-    draw.line([(MARGIN, y_offset), (WIDTH - MARGIN, y_offset)], fill=TEXT_SUB, width=1)
-    y_offset += 20
-    draw.text((MARGIN, y_offset), clean_text_for_pillow("AI 最終行動建議"), font=font_subtitle, fill=TEXT_MAIN)
-    y_offset += 40
-    
-    final_lines = wrap_text(clean_text_for_pillow(debate_result.get('final_action', '')), font_title, WIDTH - MARGIN*2, draw)
-    for line in final_lines:
-        draw.text((MARGIN, y_offset), line, font=font_title, fill=ACCENT_RED)
-        y_offset += 45
-        
-    # Crop to actual content height
-    final_height = min(y_offset + MARGIN, HEIGHT)
-    img = img.crop((0, 0, WIDTH, final_height))
-    
+            draw.text((px, ly), line, font=f_small, fill=TEXT_MAIN)
+            ly += 20
+            
     # Save to bytes
     buf = io.BytesIO()
     img.save(buf, format='PNG')
