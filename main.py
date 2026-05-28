@@ -668,6 +668,19 @@ async def test_post(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("⏳ 手動觸發盤後檢討測試（已排入背景處理，請稍候）...", parse_mode='Markdown')
     asyncio.create_task(_run_postmarket_review(context, update.message.chat_id))
 
+async def set_target(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if len(context.args) == 0:
+        await update.message.reply_text("⚠️ 請提供股票代號，例如：`/set_target 2330`", parse_mode='Markdown')
+        return
+        
+    ticker = context.args[0]
+    if not ticker.endswith(".TW") and not ticker.endswith(".TWO"):
+        suffix = TW_STOCK_DICT.get(ticker, ".TW")
+        ticker += suffix
+        
+    StorageHelper.set_tomorrow_target(ticker)
+    await update.message.reply_text(f"✅ 已成功將盤前預測標的強制設定為：**{ticker}**", parse_mode='Markdown')
+
 def main():
     if not TELEGRAM_BOT_TOKEN or TELEGRAM_BOT_TOKEN == "your_telegram_bot_token":
         logger.error("TELEGRAM_BOT_TOKEN is missing or not configured correctly in .env!")
@@ -691,6 +704,7 @@ def main():
     application.add_handler(CommandHandler('unsubscribe', unsubscribe))
     application.add_handler(CommandHandler('test_pre', test_pre))
     application.add_handler(CommandHandler('test_post', test_post))
+    application.add_handler(CommandHandler('set_target', set_target))
     
     # 排程任務已移交給 GitHub Actions 執行
     # tz = datetime.timezone(datetime.timedelta(hours=8)) # Asia/Taipei timezone
