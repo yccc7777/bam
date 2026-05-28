@@ -506,6 +506,7 @@ async def _run_premarket_report(context: ContextTypes.DEFAULT_TYPE, manual_chat_
             
         # 2. Features
         df_processed = processor.process_stock_data(df_ticker, FORECAST_WINDOWS)
+        train_data = df_processed.dropna(subset=['MA_60', 'MACD'])
         if train_data.empty:
             raise ValueError(f"{ticker} 無法產生有效訓練特徵")
             
@@ -571,6 +572,11 @@ async def _run_postmarket_review(context: ContextTypes.DEFAULT_TYPE, manual_chat
     state = StorageHelper.get_daily_state(date_str)
     if not state:
         logger.info("No morning state found for review.")
+        if manual_chat_id:
+            try:
+                await context.bot.send_message(chat_id=manual_chat_id, text="⚠️ 找不到今日盤前預測紀錄，無法執行盤後檢討。", parse_mode='Markdown')
+            except:
+                pass
         return
         
     ticker = state['ticker']
