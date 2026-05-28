@@ -73,7 +73,8 @@ def draw_gauge(draw, cx, cy, radius, percentage, font, accent_color, bg_color):
     pct_str = f"{percentage:.1f}%"
     bbox_t = draw.textbbox((0,0), pct_str, font=font)
     tw = bbox_t[2] - bbox_t[0]
-    draw.text((cx - tw/2, cy - 40), pct_str, font=font, fill="#2C3E50")
+    th = bbox_t[3] - bbox_t[1]
+    draw.text((cx - tw/2, cy - th - 5), pct_str, font=font, fill="#2C3E50")
 
 def draw_grid_background(draw, width, height):
     # Light beige/gray background
@@ -144,10 +145,28 @@ def generate_infographic(ticker: str, current_price: float, fundamentals: dict, 
     # BOX 2: Win Rate
     bx2 = bx1 + box_w + gap
     draw.rectangle([bx2, box_y, bx2 + box_w, box_y + box_h], outline=BORDER_COLOR, width=2)
-    draw.text((bx2 + 20, box_y + 20), "演算結論 (1週預期)", font=f_box_title, fill=TEXT_SUB)
+    draw.text((bx2 + 20, box_y + 20), "AI 預估上漲機率", font=f_box_title, fill=TEXT_SUB)
     
+    # 1W Gauge on the left side
     win_rate = predictions.get('1W', 0) * 100
-    draw_gauge(draw, bx2 + box_w//2, box_y + box_h - 20, 90, win_rate, f_h1, ACCENT_GREEN, BG_COLOR)
+    gauge_cx = bx2 + 110
+    gauge_cy = box_y + 170
+    draw_gauge(draw, gauge_cx, gauge_cy, 70, win_rate, f_box_title, ACCENT_GREEN, BG_COLOR)
+    draw.text((gauge_cx - 30, gauge_cy + 10), "1週預期", font=f_small, fill=TEXT_SUB)
+    
+    # Other predictions on the right side
+    list_x = bx2 + 200
+    list_y = box_y + 70
+    preds_to_show = [
+        ("2週預期", predictions.get('2W', 0)),
+        ("3週預期", predictions.get('3W', 0)),
+        ("1個月預期", predictions.get('1M', 0)),
+        ("3個月預期", predictions.get('3M', 0)),
+    ]
+    for lbl, val in preds_to_show:
+        draw.text((list_x, list_y), f"{lbl}:", font=f_small, fill=TEXT_SUB)
+        draw.text((list_x + 75, list_y - 2), f"{val*100:.1f}%", font=f_body, fill=TEXT_MAIN)
+        list_y += 35
     
     # BOX 3: Action
     bx3 = bx2 + box_w + gap
