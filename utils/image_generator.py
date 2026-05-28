@@ -29,6 +29,16 @@ def clean_text(text):
         text = text.replace(r, '')
     return text.strip()
 
+def summarize_text(txt, max_len=30):
+    # Take only the first sentence and truncate if still too long
+    if not txt: return "無"
+    txt = txt.split('。')[0]
+    if len(txt) > max_len:
+        txt = txt[:max_len] + "..."
+    else:
+        txt = txt + "。" if not txt.endswith("。") else txt
+    return txt
+
 def wrap_text(text, font, max_width, draw):
     lines = []
     paragraphs = text.split('\n')
@@ -173,7 +183,7 @@ def generate_infographic(ticker: str, current_price: float, fundamentals: dict, 
     draw.rectangle([bx3, box_y, bx3 + box_w, box_y + box_h], outline=BORDER_COLOR, width=2)
     draw.text((bx3 + 20, box_y + 20), "行動指引", font=f_box_title, fill=TEXT_SUB)
     
-    action_text = clean_text(debate_result.get('final_action', '觀望'))
+    action_text = summarize_text(clean_text(debate_result.get('final_action', '觀望')), 30)
     # Action Status Box
     btn_w = 260
     btn_h = 60
@@ -215,7 +225,7 @@ def generate_infographic(ticker: str, current_price: float, fundamentals: dict, 
     draw.text((bx1 + box_w/2 + 10, my + 100), str(yoy), font=f_box_title, fill=TEXT_MAIN)
     
     # AI Fundament Explanation
-    ai_fund_expl = clean_text(debate_result.get('fundamental_explanation', '無'))
+    ai_fund_expl = summarize_text(clean_text(debate_result.get('fundamental_explanation', '無')), 45)
     draw.rectangle([bx2, my, bx3+box_w, my + 140], outline=BORDER_COLOR, width=2)
     draw.text((bx2 + 20, my + 15), "AI 基本面解析", font=f_box_title, fill=ACCENT_GREEN)
     
@@ -231,10 +241,10 @@ def generate_infographic(ticker: str, current_price: float, fundamentals: dict, 
     draw.text((bx1 + 20, by + 15), "內部展望與外部籌碼共識", font=f_box_title, fill=TEXT_SUB)
     
     roles = [
-        ("經理人 (法說會)", clean_text(debate_result.get('management', ''))),
-        ("分析師 (研究報告)", clean_text(debate_result.get('analyst', ''))),
-        ("外資 (籌碼面)", clean_text(debate_result.get('foreign', ''))),
-        ("散戶 (討論區)", clean_text(debate_result.get('retail', '')))
+        ("經理人 (法說會)", summarize_text(clean_text(debate_result.get('management', '')), 35)),
+        ("分析師 (研究報告)", summarize_text(clean_text(debate_result.get('analyst', '')), 35)),
+        ("外資 (籌碼面)", summarize_text(clean_text(debate_result.get('foreign', '')), 35)),
+        ("散戶 (討論區)", summarize_text(clean_text(debate_result.get('retail', '')), 35))
     ]
     
     # 2x2 grid inside bottom row
