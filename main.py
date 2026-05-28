@@ -173,6 +173,26 @@ async def predict(update: Update, context: ContextTypes.DEFAULT_TYPE):
             parse_mode='Markdown'
         )
         
+        # Send the detailed text version as requested by user
+        detailed_text = (
+            f"📊 **{ticker} 深度評估報告 (XGBoost + LSTM) - 詳細文字版**\n"
+            f"━━━━━━━━━━━━━━━━━━━\n"
+            f"💡 **基本面深度意涵分析**：\n_{debate_result.get('fundamental_explanation', '無法獲取解析')}_\n\n"
+            f"🤖 **四大市場參與者實時觀點：**\n"
+            f"👨‍💼 **經理人 (法說會)**：\n_{debate_result.get('management', '無')}_\n\n"
+            f"👨‍💻 **分析師 (研究報告)**：\n_{debate_result.get('analyst', '無')}_\n\n"
+            f"🦅 **外資 (籌碼面)**：\n_{debate_result.get('foreign', '無')}_\n\n"
+            f"🤡 **散戶 (Threads/PTT)**：\n_{debate_result.get('retail', '無')}_\n"
+            f"━━━━━━━━━━━━━━━━━━━\n"
+            f"🎯 **AI 最終行動建議**：\n**{debate_result.get('final_action', '觀望')}**"
+        )
+        
+        await context.bot.send_message(
+            chat_id=update.message.chat_id,
+            text=detailed_text,
+            parse_mode='Markdown'
+        )
+        
         await context.bot.delete_message(
             chat_id=update.message.chat_id,
             message_id=loading_msg.message_id
@@ -531,7 +551,17 @@ async def _run_premarket_report(context: ContextTypes.DEFAULT_TYPE, manual_chat_
             generate_infographic,
             ticker, current_price, fundamentals, predictions, debate_result, news_display
         )
-        
+        detailed_text = (
+            f"🌅 **盤前策略報告 ({date_str}) - 詳細文字版**\n"
+            f"━━━━━━━━━━━━━━━━━━━\n"
+            f"💡 **基本面深度意涵分析**：\n_{debate_result.get('fundamental_explanation', '無法獲取解析')}_\n\n"
+            f"📰 **即時頭條**：_{news_display}_\n\n"
+            f"🎯 **AI 最終行動建議**：\n"
+            f"**{debate_result.get('final_action', '無')}**\n"
+            f"━━━━━━━━━━━━━━━━━━━\n"
+            f"💡 系統將於下午為您檢討此決策的準確度。"
+        )
+
         subs = StorageHelper.get_subscribers()
         if manual_chat_id and manual_chat_id not in subs:
             subs.append(manual_chat_id)
@@ -540,9 +570,10 @@ async def _run_premarket_report(context: ContextTypes.DEFAULT_TYPE, manual_chat_
                 await context.bot.send_photo(
                     chat_id=chat_id,
                     photo=image_bytes,
-                    caption=f"🌅 **盤前策略報告 ({date_str})**\n💡 系統將於下午為您檢討此決策的準確度。",
+                    caption=f"🌅 **盤前策略圖卡 ({date_str})**",
                     parse_mode='Markdown'
                 )
+                await context.bot.send_message(chat_id=chat_id, text=detailed_text, parse_mode='Markdown')
             except Exception as e:
                 logger.error(f"Failed to send to {chat_id}: {e}")
     except Exception as e:
