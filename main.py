@@ -67,45 +67,7 @@ async def unsubscribe(update: Update, context: ContextTypes.DEFAULT_TYPE):
     StorageHelper.remove_subscriber(chat_id)
     await update.message.reply_text("❌ 已取消訂閱每日盤前推播與盤後檢討。", parse_mode='Markdown')
 
-def get_fundamental_analysis(fundamentals: dict) -> str:
-    pe = fundamentals.get('PE', 'N/A')
-    pb = fundamentals.get('PB', 'N/A')
-    eps = fundamentals.get('EPS', 'N/A')
-    yoy = fundamentals.get('YOY', 'N/A')
-    
-    pe_desc = ""
-    if pe != 'N/A':
-        try:
-            pe_val = float(pe)
-            if pe_val < 12: pe_desc = "(估值便宜 👍)"
-            elif pe_val > 20: pe_desc = "(估值偏貴 ⚠️)"
-            else: pe_desc = "(估值合理)"
-        except: pass
-        
-    pb_desc = ""
-    if pb != 'N/A':
-        try:
-            pb_val = float(pb)
-            if pb_val < 1: pb_desc = "(股價委屈 👍)"
-            elif pb_val > 2.5: pb_desc = "(溢價過高 ⚠️)"
-            else: pb_desc = "(價格合理)"
-        except: pass
-        
-    yoy_desc = ""
-    if yoy != 'N/A' and isinstance(yoy, str) and '%' in yoy:
-        try:
-            yoy_val = float(yoy.replace('%', ''))
-            if yoy_val > 15: yoy_desc = "(爆發性成長 🔥)"
-            elif yoy_val > 0: yoy_desc = "(穩定成長 📈)"
-            else: yoy_desc = "(營收衰退 ⚠️)"
-        except: pass
 
-    return (
-        f"   • 本益比 (PE)：{pe} {pe_desc}\n"
-        f"   • 股價淨值比 (PB)：{pb} {pb_desc}\n"
-        f"   • 每股盈餘 (EPS)：{eps}\n"
-        f"   • 營收年增率 (YoY)：{yoy} {yoy_desc}"
-    )
 
 async def predict(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if len(context.args) == 0:
@@ -202,7 +164,11 @@ async def predict(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"━━━━━━━━━━━━━━━━━━━\n"
             f"💰 **最新收盤價：** ${current_price:.2f}\n"
             f"📈 **基本面數據：**\n"
-            f"{get_fundamental_analysis(fundamentals)}\n\n"
+            f"   • 本益比 (PE)：{fundamentals.get('PE')}\n"
+            f"   • 股價淨值比 (PB)：{fundamentals.get('PB')}\n"
+            f"   • 每股盈餘 (EPS)：{fundamentals.get('EPS')}\n"
+            f"   • 營收年增率 (YoY)：{fundamentals.get('YOY')}\n"
+            f"💡 **基本面深度意涵分析**：\n_{debate_result.get('fundamental_explanation', '無法獲取解析')}_\n\n"
             f"🔥 **AI 預估上漲機率：**\n"
             f"   • 1 週預期： {predictions.get('1W', 0)*100:.1f}%\n"
             f"   • 2 週預期： {predictions.get('2W', 0)*100:.1f}%\n"
@@ -580,7 +546,11 @@ async def _run_premarket_report(context: ContextTypes.DEFAULT_TYPE, manual_chat_
             f"🎯 **標的**：{ticker}\n"
             f"💰 **早盤參考價**：${current_price:.2f}\n"
             f"📈 **基本面數據：**\n"
-            f"{get_fundamental_analysis(fundamentals)}\n\n"
+            f"   • 本益比 (PE)：{fundamentals.get('PE')}\n"
+            f"   • 股價淨值比 (PB)：{fundamentals.get('PB')}\n"
+            f"   • 每股盈餘 (EPS)：{fundamentals.get('EPS')}\n"
+            f"   • 營收年增率 (YoY)：{fundamentals.get('YOY')}\n"
+            f"💡 **基本面深度意涵分析**：\n_{debate_result.get('fundamental_explanation', '無法獲取解析')}_\n\n"
             f"📰 **即時頭條**：_{news_display}_\n\n"
             f"🎯 **AI 最終行動建議**：\n"
             f"**{debate_result['final_action']}**\n"
