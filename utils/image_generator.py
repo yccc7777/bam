@@ -110,25 +110,21 @@ def generate_infographic(ticker: str, current_price: float, fundamentals: dict, 
     draw.text((40, 160), "1週 AI 預估勝率", font=f_h2, fill=TEXT_SUB)
     draw.text((40, 200), f"{win_rate:.1f}%", font=f_huge, fill=signal_color)
     
-    # Add minor trend texts
-    draw.text((40, 310), f"1個月預期: {predictions.get('1M', 0)*100:.1f}%", font=f_small, fill=TEXT_SUB)
-    draw.text((200, 310), f"3個月預期: {predictions.get('3M', 0)*100:.1f}%", font=f_small, fill=TEXT_SUB)
-    
-    # Fundamentals Panel (Right)
+    # Other Predictions Panel (Right)
     fx = 420
     draw.rounded_rectangle([fx, 160, WIDTH-40, 340], fill=PANEL_BG, outline=BORDER_COLOR, width=2, radius=12)
     
-    draw.text((fx + 20, 180), "本益比 (PE)", font=f_small, fill=TEXT_SUB)
-    draw.text((fx + 20, 210), str(fundamentals.get('PE', 'N/A')), font=f_h2, fill=TEXT_MAIN)
+    draw.text((fx + 20, 180), "2週預期", font=f_small, fill=TEXT_SUB)
+    draw.text((fx + 20, 210), f"{predictions.get('2W', 0)*100:.1f}%", font=f_h2, fill=TEXT_MAIN)
     
-    draw.text((fx + 180, 180), "股價淨值比 (PB)", font=f_small, fill=TEXT_SUB)
-    draw.text((fx + 180, 210), str(fundamentals.get('PB', 'N/A')), font=f_h2, fill=TEXT_MAIN)
+    draw.text((fx + 180, 180), "3週預期", font=f_small, fill=TEXT_SUB)
+    draw.text((fx + 180, 210), f"{predictions.get('3W', 0)*100:.1f}%", font=f_h2, fill=TEXT_MAIN)
     
-    draw.text((fx + 20, 260), "每股盈餘 (EPS)", font=f_small, fill=TEXT_SUB)
-    draw.text((fx + 20, 290), str(fundamentals.get('EPS', 'N/A')), font=f_h2, fill=TEXT_MAIN)
+    draw.text((fx + 20, 260), "1個月預期", font=f_small, fill=TEXT_SUB)
+    draw.text((fx + 20, 290), f"{predictions.get('1M', 0)*100:.1f}%", font=f_h2, fill=TEXT_MAIN)
     
-    draw.text((fx + 180, 260), "營收年增率 (YoY)", font=f_small, fill=TEXT_SUB)
-    draw.text((fx + 180, 290), str(fundamentals.get('YOY', 'N/A')), font=f_h2, fill=TEXT_MAIN)
+    draw.text((fx + 180, 260), "3個月預期", font=f_small, fill=TEXT_SUB)
+    draw.text((fx + 180, 290), f"{predictions.get('3M', 0)*100:.1f}%", font=f_h2, fill=TEXT_MAIN)
 
     # --- Footer Banner (Action Text) ---
     clean_action = action_text.split('。')[0]

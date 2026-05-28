@@ -177,6 +177,11 @@ async def predict(update: Update, context: ContextTypes.DEFAULT_TYPE):
         detailed_text = (
             f"📊 **{ticker} 深度評估報告 (XGBoost + LSTM) - 詳細文字版**\n"
             f"━━━━━━━━━━━━━━━━━━━\n"
+            f"📈 **基本面數據：**\n"
+            f"   • 本益比 (PE)：{fundamentals.get('PE', 'N/A')}\n"
+            f"   • 股價淨值比 (PB)：{fundamentals.get('PB', 'N/A')}\n"
+            f"   • 每股盈餘 (EPS)：{fundamentals.get('EPS', 'N/A')}\n"
+            f"   • 營收年增率 (YoY)：{fundamentals.get('YOY', 'N/A')}\n"
             f"💡 **基本面深度意涵分析**：\n_{debate_result.get('fundamental_explanation', '無法獲取解析')}_\n\n"
             f"🤖 **四大市場參與者實時觀點：**\n"
             f"👨‍💼 **經理人 (法說會)**：\n_{debate_result.get('management', '無')}_\n\n"
@@ -554,6 +559,11 @@ async def _run_premarket_report(context: ContextTypes.DEFAULT_TYPE, manual_chat_
         detailed_text = (
             f"🌅 **盤前策略報告 ({date_str}) - 詳細文字版**\n"
             f"━━━━━━━━━━━━━━━━━━━\n"
+            f"📈 **基本面數據：**\n"
+            f"   • 本益比 (PE)：{fundamentals.get('PE', 'N/A')}\n"
+            f"   • 股價淨值比 (PB)：{fundamentals.get('PB', 'N/A')}\n"
+            f"   • 每股盈餘 (EPS)：{fundamentals.get('EPS', 'N/A')}\n"
+            f"   • 營收年增率 (YoY)：{fundamentals.get('YOY', 'N/A')}\n"
             f"💡 **基本面深度意涵分析**：\n_{debate_result.get('fundamental_explanation', '無法獲取解析')}_\n\n"
             f"📰 **即時頭條**：_{news_display}_\n\n"
             f"🎯 **AI 最終行動建議**：\n"
