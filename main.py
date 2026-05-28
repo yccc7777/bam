@@ -20,6 +20,7 @@ from strategies.execution import PaperBroker
 from data.storage import StorageHelper
 import json
 import datetime
+from utils.image_generator import generate_infographic
 
 # 載入台股代號與市場後綴的對應表 (TWSE: .TW, TPEx: .TWO)
 TW_STOCK_DICT = {}
@@ -159,37 +160,22 @@ async def predict(update: Update, context: ContextTypes.DEFAULT_TYPE):
             first_news_title = news_context.split("標題：")[1].split("\n")[0] if "標題：" in news_context else ""
             news_display = first_news_title if first_news_title else "無即時新聞"
 
-        response_text = (
-            f"📊 **{ticker} 深度評估報告 (XGBoost + LSTM)**\n"
-            f"━━━━━━━━━━━━━━━━━━━\n"
-            f"💰 **最新收盤價：** ${current_price:.2f}\n"
-            f"📈 **基本面數據：**\n"
-            f"   • 本益比 (PE)：{fundamentals.get('PE')}\n"
-            f"   • 股價淨值比 (PB)：{fundamentals.get('PB')}\n"
-            f"   • 每股盈餘 (EPS)：{fundamentals.get('EPS')}\n"
-            f"   • 營收年增率 (YoY)：{fundamentals.get('YOY')}\n"
-            f"💡 **基本面深度意涵分析**：\n_{debate_result.get('fundamental_explanation', '無法獲取解析')}_\n\n"
-            f"🔥 **AI 預估上漲機率：**\n"
-            f"   • 1 週預期： {predictions.get('1W', 0)*100:.1f}%\n"
-            f"   • 2 週預期： {predictions.get('2W', 0)*100:.1f}%\n"
-            f"   • 3 週預期： {predictions.get('3W', 0)*100:.1f}%\n"
-            f"   • 1 個月預期：{predictions.get('1M', 0)*100:.1f}%\n"
-            f"   • 3 個月預期：{predictions.get('3M', 0)*100:.1f}%\n\n"
-            f"🤖 **四大市場參與者實時觀點：**\n"
-            f"👨‍💼 **經理人 (法說會)**：\n_{debate_result['management']}_\n\n"
-            f"👨‍💻 **分析師 (研究報告)**：\n_{debate_result['analyst']}_\n\n"
-            f"🦅 **外資 (籌碼面)**：\n_{debate_result['foreign']}_\n\n"
-            f"🤡 **散戶 (Threads/PTT)**：\n_{debate_result['retail']}_\n"
-            f"━━━━━━━━━━━━━━━━━━━\n"
-            f"🎯 **AI 最終行動建議**：\n**{debate_result['final_action']}**\n\n"
-            f"💡 _提示：輸入_ `/buy {ticker} 1000` _模擬買進 1 張。_"
+        image_bytes = await loop.run_in_executor(
+            None,
+            generate_infographic,
+            ticker, current_price, fundamentals, predictions, debate_result, news_display
         )
         
-        await context.bot.edit_message_text(
+        await context.bot.send_photo(
             chat_id=update.message.chat_id,
-            message_id=loading_msg.message_id,
-            text=response_text,
+            photo=image_bytes,
+            caption=f"💡 _提示：輸入_ `/buy {ticker} 1000` _模擬買進 1 張。_",
             parse_mode='Markdown'
+        )
+        
+        await context.bot.delete_message(
+            chat_id=update.message.chat_id,
+            message_id=loading_msg.message_id
         )
 
     except Exception as e:
@@ -540,22 +526,10 @@ async def _run_premarket_report(context: ContextTypes.DEFAULT_TYPE, manual_chat_
             first_news_title = news_context.split("標題：")[1].split("\n")[0] if "標題：" in news_context else ""
             news_display = first_news_title if first_news_title else "無即時新聞"
 
-        response_text = (
-            f"🌅 **盤前策略報告 ({date_str})**\n"
-            f"━━━━━━━━━━━━━━━━━━━\n"
-            f"🎯 **標的**：{ticker}\n"
-            f"💰 **早盤參考價**：${current_price:.2f}\n"
-            f"📈 **基本面數據：**\n"
-            f"   • 本益比 (PE)：{fundamentals.get('PE')}\n"
-            f"   • 股價淨值比 (PB)：{fundamentals.get('PB')}\n"
-            f"   • 每股盈餘 (EPS)：{fundamentals.get('EPS')}\n"
-            f"   • 營收年增率 (YoY)：{fundamentals.get('YOY')}\n"
-            f"💡 **基本面深度意涵分析**：\n_{debate_result.get('fundamental_explanation', '無法獲取解析')}_\n\n"
-            f"📰 **即時頭條**：_{news_display}_\n\n"
-            f"🎯 **AI 最終行動建議**：\n"
-            f"**{debate_result['final_action']}**\n"
-            f"━━━━━━━━━━━━━━━━━━━\n"
-            f"💡 系統將於下午為您檢討此決策的準確度。"
+        image_bytes = await loop.run_in_executor(
+            None,
+            generate_infographic,
+            ticker, current_price, fundamentals, predictions, debate_result, news_display
         )
         
         subs = StorageHelper.get_subscribers()
@@ -563,7 +537,12 @@ async def _run_premarket_report(context: ContextTypes.DEFAULT_TYPE, manual_chat_
             subs.append(manual_chat_id)
         for chat_id in subs:
             try:
-                await context.bot.send_message(chat_id=chat_id, text=response_text, parse_mode='Markdown')
+                await context.bot.send_photo(
+                    chat_id=chat_id,
+                    photo=image_bytes,
+                    caption=f"🌅 **盤前策略報告 ({date_str})**\n💡 系統將於下午為您檢討此決策的準確度。",
+                    parse_mode='Markdown'
+                )
             except Exception as e:
                 logger.error(f"Failed to send to {chat_id}: {e}")
     except Exception as e:

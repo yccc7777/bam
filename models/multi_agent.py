@@ -12,7 +12,7 @@ class AgentDebateEngine:
             
         try:
             genai.configure(api_key=api_key)
-            self.model = genai.GenerativeModel('gemini-2.5-flash')
+            self.model = genai.GenerativeModel('gemini-flash-latest')
             self.use_llm = True
         except Exception as e:
             logger.error(f"Failed to initialize Gemini for debate: {e}")
@@ -41,37 +41,34 @@ class AgentDebateEngine:
             }
             
         try:
-            # 0. 基本面深度解析 (客觀)
-            fund_prompt = f"請針對股票({ticker})的最新基本面數據進行客觀分析：\n{fund_str}\n請用大約 50 字的篇幅，詳細解釋這些數據背後代表的意涵（例如：高低本益比或淨值比帶來的潛在風險與機會、營收年增率所暗示的成長性），只需客觀分析，不需要角色扮演。"
-            fundamental_explanation = self.model.generate_content(fund_prompt).text.strip()
-            
-            # 1. 經理人 (法說會視角)
-            mgt_prompt = f"你是這家公司({ticker})的「高階經理人」。\n正在法說會上發言。\n這是我們在公開資訊觀測站(MOPS)上最新公告的法說會重點摘要：\n{mops_context if mops_context else '無近期法說會特殊聲明'}\n請用「給股東聽的自信與專業口吻」(50字以內)，專注解讀法說會內容，並給出未來的展望與公司方向。"
-            management_view = self.model.generate_content(mgt_prompt).text.strip()
-            
-            # 2. 分析師 (外資/投顧研究報告)
-            analyst_prompt = f"你是頂尖投顧的「首席分析師」。\n正在寫({ticker})的研究報告。\nAI 模型(XGBoost+LSTM)預測未來上漲機率為：{prob_str}。\n新聞背景：\n{news_context}\n請用「給客戶看的專業但易懂的分析口吻」(50字以內)，說明現在的機率與新聞面是否支持買進？"
-            analyst_view = self.model.generate_content(analyst_prompt).text.strip()
-            
-            # 3. 外資 (市場主力籌碼)
-            foreign_prompt = f"你是操盤百億資金的「專業外資機構經理人」。\n正在盯盤({ticker})。\n目前的真實籌碼數據(證交所三大法人買賣超)：\n{institutional if institutional else '無近期異常變動'}。\n請根據這些真實籌碼數據，用「專業、客觀且嚴謹的機構法人分析口吻」(50字以內)，分析目前的股價位階與籌碼動向，說明機構目前的資金配置傾向（加碼或減碼）？"
-            foreign_view = self.model.generate_content(foreign_prompt).text.strip()
-            
-            # 4. 散戶 (PTT 鄉民)
-            retail_prompt = f"你是關注 PTT 股票版(Stock) 討論的「認真型散戶投資人」。\n正在評估股票：{ticker}\n這是最近 PTT 股票版上鄉民的真實推文與討論：\n{ptt_context if ptt_context else '無近期 PTT 討論'}\n經理人說：{management_view}\n分析師說：{analyst_view}\n請閱讀上述 PTT 真實討論後，用「認真且直白、不使用網路酸民梗的散戶分析口吻」(50字以內)，表達你總結了鄉民情緒與自身評估後的心情，你會選擇進場還是觀望？"
-            retail_view = self.model.generate_content(retail_prompt).text.strip()
-            
-            # 5. 最終一句話總結 (評分系統轉換)
-            final_action_prompt = f"根據上述四大市場參與者的觀點，以及 AI 給出的勝率：{prob_str}\n請用「一句超級直白的話 (20字以內)」告訴新手現在到底該怎麼做？"
-            final_action = self.model.generate_content(final_action_prompt).text.strip()
+            mega_prompt = f"""請根據以下資訊，扮演多個角色進行分析，並嚴格以 JSON 格式輸出。
+股票: {ticker}
+預測機率: {prob_str}
+基本面: {fund_str}
+法說會重點: {mops_context if mops_context else '無近期法說會特殊聲明'}
+新聞背景: {news_context if news_context else '無最新新聞'}
+鄉民討論: {ptt_context if ptt_context else '無近期 PTT 討論'}
+籌碼數據: {institutional if institutional else '無近期異常變動'}
+
+請輸出一個 JSON 物件，必須包含以下 key:
+"fundamental_explanation": "50字詳細解釋基本面數據背後代表的意涵(客觀分析)"
+"management": "50字高階經理人專注解讀法說會與未來展望"
+"analyst": "50字首席分析師說明機率與新聞面是否支持買進"
+"foreign": "50字外資機構分析股價位階與籌碼動向"
+"retail": "50字認真型散戶總結鄉民情緒與自身評估"
+"final_action": "20字最終一句話總結現在到底該怎麼做"
+"""
+            import json
+            response = self.model.generate_content(mega_prompt, generation_config={"response_mime_type": "application/json"})
+            result_json = json.loads(response.text.strip())
             
             return {
-                "fundamental_explanation": fundamental_explanation,
-                "management": management_view,
-                "analyst": analyst_view,
-                "foreign": foreign_view,
-                "retail": retail_view,
-                "final_action": final_action
+                "fundamental_explanation": result_json.get("fundamental_explanation", "無"),
+                "management": result_json.get("management", "無"),
+                "analyst": result_json.get("analyst", "無"),
+                "foreign": result_json.get("foreign", "無"),
+                "retail": result_json.get("retail", "無"),
+                "final_action": result_json.get("final_action", "無")
             }
             
         except Exception as e:

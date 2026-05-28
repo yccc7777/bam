@@ -21,3 +21,6 @@ supabase>=2.3.0
 # Multi-Agent Debate
 langchain>=0.1.13
 langchain-google-genai>=1.0.1
+
+# Image Generation
+Pillow>=10.2.0
