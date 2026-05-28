@@ -22,16 +22,16 @@ def ensure_fonts():
         urllib.request.urlretrieve(FONT_URL_BOLD, FONT_PATH_BOLD)
 
 def clean_text_for_pillow(text):
-    # Pillow struggles with emojis, so we replace common ones
+    # Pillow struggles with emojis, so we strip them entirely to keep the layout clean
     replacements = {
-        '📈': '[走勢]', '🔥': '[預測]', '🤖': '[AI]', '👨‍💼': '[經理人]', 
-        '👨‍💻': '[分析師]', '🦅': '[外資]', '🤡': '[散戶]', '🎯': '[目標]',
-        '💰': '[價格]', '💡': '[提示]', '🌅': '[盤前]', '📰': '[新聞]',
-        '👍': '(優)', '⚠️': '(注意)'
+        '📊': '', '📈': '', '🔥': '', '🤖': '', '👨‍💼': '', 
+        '👨‍💻': '', '🦅': '', '🤡': '', '🎯': '',
+        '💰': '', '💡': '', '🌅': '', '📰': '',
+        '👍': '', '⚠️': ''
     }
     for k, v in replacements.items():
         text = text.replace(k, v)
-    return text
+    return text.strip()
 
 def wrap_text(text, font, max_width, draw):
     lines = []
@@ -88,7 +88,7 @@ def generate_infographic(ticker: str, current_price: float, fundamentals: dict, 
     y_offset = MARGIN
     
     # --- Title ---
-    title_text = f"📊 {ticker} 深度評估報告 (XGBoost + LSTM)"
+    title_text = f"{ticker} 深度評估報告 (XGBoost + LSTM)"
     title_text = clean_text_for_pillow(title_text)
     draw.text((MARGIN, y_offset), title_text, font=font_title, fill=TEXT_MAIN)
     y_offset += 60
@@ -104,7 +104,7 @@ def generate_infographic(ticker: str, current_price: float, fundamentals: dict, 
     
     # --- Fundamentals Panel ---
     draw.rounded_rectangle([(MARGIN, y_offset), (WIDTH - MARGIN, y_offset + 160)], fill=PANEL_BG, radius=10)
-    draw.text((MARGIN + 20, y_offset + 15), clean_text_for_pillow("📈 基本面數據"), font=font_subtitle, fill=TEXT_MAIN)
+    draw.text((MARGIN + 20, y_offset + 15), clean_text_for_pillow("基本面數據"), font=font_subtitle, fill=TEXT_MAIN)
     fund_str = f"本益比 (PE): {fundamentals.get('PE')}\n股價淨值比 (PB): {fundamentals.get('PB')}\n每股盈餘 (EPS): {fundamentals.get('EPS')}\n營收年增率 (YoY): {fundamentals.get('YOY')}"
     
     # Analysis from AI
@@ -113,7 +113,7 @@ def generate_infographic(ticker: str, current_price: float, fundamentals: dict, 
     draw.text((MARGIN + 20, y_offset + 50), clean_text_for_pillow(fund_str), font=font_body, fill=TEXT_SUB)
     
     # Explain text wrapped
-    expl_lines = wrap_text(clean_text_for_pillow(f"💡 AI 解析：{ai_fund_expl}"), font_small, WIDTH - MARGIN*2 - 40, draw)
+    expl_lines = wrap_text(clean_text_for_pillow(f"AI 解析：{ai_fund_expl}"), font_small, WIDTH - MARGIN*2 - 40, draw)
     expl_y = y_offset + 160 + 10
     for line in expl_lines:
         draw.text((MARGIN, expl_y), line, font=font_small, fill=ACCENT_GREEN)
@@ -122,7 +122,7 @@ def generate_infographic(ticker: str, current_price: float, fundamentals: dict, 
     y_offset = expl_y + 20
     
     # --- Predictions ---
-    draw.text((MARGIN, y_offset), clean_text_for_pillow("🔥 AI 預估上漲機率"), font=font_subtitle, fill=TEXT_MAIN)
+    draw.text((MARGIN, y_offset), clean_text_for_pillow("AI 預估上漲機率"), font=font_subtitle, fill=TEXT_MAIN)
     y_offset += 35
     
     pred_texts = [
@@ -136,14 +136,14 @@ def generate_infographic(ticker: str, current_price: float, fundamentals: dict, 
     y_offset += 10
     
     # --- AI Debate Panel ---
-    draw.text((MARGIN, y_offset), clean_text_for_pillow("🤖 四大市場參與者實時觀點"), font=font_subtitle, fill=TEXT_MAIN)
+    draw.text((MARGIN, y_offset), clean_text_for_pillow("四大市場參與者實時觀點"), font=font_subtitle, fill=TEXT_MAIN)
     y_offset += 35
     
     roles = [
-        ("👨‍💼 經理人 (法說會)", debate_result.get('management', '')),
-        ("👨‍💻 分析師 (研究報告)", debate_result.get('analyst', '')),
-        ("🦅 外資 (籌碼面)", debate_result.get('foreign', '')),
-        ("🤡 散戶 (討論區)", debate_result.get('retail', ''))
+        ("經理人 (法說會)", debate_result.get('management', '')),
+        ("分析師 (研究報告)", debate_result.get('analyst', '')),
+        ("外資 (籌碼面)", debate_result.get('foreign', '')),
+        ("散戶 (討論區)", debate_result.get('retail', ''))
     ]
     
     for r_title, r_text in roles:
@@ -158,7 +158,7 @@ def generate_infographic(ticker: str, current_price: float, fundamentals: dict, 
     # --- Final Action ---
     draw.line([(MARGIN, y_offset), (WIDTH - MARGIN, y_offset)], fill=TEXT_SUB, width=1)
     y_offset += 20
-    draw.text((MARGIN, y_offset), clean_text_for_pillow("🎯 AI 最終行動建議"), font=font_subtitle, fill=TEXT_MAIN)
+    draw.text((MARGIN, y_offset), clean_text_for_pillow("AI 最終行動建議"), font=font_subtitle, fill=TEXT_MAIN)
     y_offset += 40
     
     final_lines = wrap_text(clean_text_for_pillow(debate_result.get('final_action', '')), font_title, WIDTH - MARGIN*2, draw)
