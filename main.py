@@ -745,20 +745,34 @@ def main():
     
     logger.info("Project Chronos Telegram Bot is starting...")
     
-    # --- 根據環境決定要用 Webhook 還是 Polling ---
-    # 如果有 RENDER_EXTERNAL_URL 環境變量，表示我們部署在 Render 上，啟用 Webhook
+    # --- 根據環境決定要啟動的服務 ---
     render_url = os.environ.get("RENDER_EXTERNAL_URL")
     port = int(os.environ.get("PORT", 8080))
     
     try:
         if render_url:
-            logger.info(f"Running on Render with Webhook URL: {render_url}")
-            application.run_webhook(
-                listen="0.0.0.0",
-                port=port,
-                webhook_url=render_url,
-                drop_pending_updates=True
-            )
+            logger.info(f"Running on Render. Starting Health Check Server on port {port} and using Long Polling.")
+            # 啟動一個輕量級的 HTTP 伺服器，專門用來回應 UptimeRobot 的 Ping，避免 Render 休眠
+            import threading
+            from http.server import BaseHTTPRequestHandler, HTTPServer
+            
+            class HealthCheckHandler(BaseHTTPRequestHandler):
+                def do_GET(self):
+                    self.send_response(200)
+                    self.end_headers()
+                    self.wfile.write(b"OK - Bot is awake!")
+                def log_message(self, format, *args):
+                    pass # 避免 ping 塞滿 log
+                    
+            def run_health_server():
+                server = HTTPServer(('0.0.0.0', port), HealthCheckHandler)
+                server.serve_forever()
+                
+            threading.Thread(target=run_health_server, daemon=True).start()
+            
+            # 使用 Polling 而非 Webhook。因為若 Render 休眠，Webhook 喚醒太慢會導致 Telegram 丟棄訊息。
+            # Polling 會將訊息留在 Telegram 伺服器，等機器人醒來再抓取，大幅提升穩定性。
+            application.run_polling(drop_pending_updates=True)
         else:
             logger.info("Running locally with Long Polling")
             application.run_polling(drop_pending_updates=True)
